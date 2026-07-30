@@ -23,7 +23,13 @@ func New(cfg *config.Config) (LLM, error) {
 		return NewGroq(cfg.GroqAPIKey, cfg.GroqModel)
 	case "ollama":
 		return NewOllama(cfg.OllamaURL, cfg.OllamaModel)
+	case "openai":
+		return NewOpenAI(cfg.OpenAIAPIKey, cfg.OpenAIModel)
+	case "openrouter":
+		return NewOpenRouter(cfg.OpenRouterAPIKey, cfg.OpenRouterModel)
+	case "deepseek":
+		return NewDeepSeek(cfg.DeepSeekAPIKey, cfg.DeepSeekModel)
 	default:
-		return nil, fmt.Errorf("unsupported LLM provider: %s", cfg.LLMProvider)
+		return nil, fmt.Errorf("unsupported LLM provider: %q (supported: groq, gemini, ollama, openai, openrouter, deepseek)", cfg.LLMProvider)
 	}
 }

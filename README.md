@@ -1,103 +1,101 @@
 # 🤖 NEXA — Personal AI Desktop & Voice Assistant
 
+[![Release](https://img.shields.io/badge/Version-v1.0.0-success?style=flat-square)](https://github.com/)
 [![Go Version](https://img.shields.io/badge/Go-1.20%2B-00ADD8?style=flat-square&logo=go)](https://golang.org/)
 [![Python Version](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python)](https://python.org/)
-[![Groq API](https://img.shields.io/badge/LLM-Groq%20Llama%203.1--8B-f05032?style=flat-square)](https://groq.com/)
 [![License](https://img.shields.io/badge/License-MIT-blue.style=flat-square)](LICENSE)
 
-**NEXA** is an ultra-fast, hands-free personal AI desktop assistant built in Go & Python. It combines real-time neural wake word detection, OpenAI Whisper speech-to-text, Rhasspy Piper neural voice synthesis, live web searching, and deep Windows OS desktop automation into a seamless conversational agent.
+**NEXA v1.0.0** is an ultra-fast, hands-free personal AI desktop assistant built in Go & Python. It features multi-LLM provider support (Groq, OpenAI, DeepSeek, OpenRouter, Gemini, Ollama), real-time neural wake word detection, OpenAI Whisper speech-to-text, Rhasspy Piper neural voice synthesis, live web searching, and deep Windows OS desktop automation into a seamless conversational agent.
 
 ---
 
-## ✨ Key Features
+## ✨ Key Features & Versioning
 
+- 🏷️ **Version 1.0.0 Release**  
+  Full semantic versioning, CLI flags for runtime provider/model switching (`-p` / `--provider`, `-m` / `--model`), and version diagnostics (`nexa version`).
+- 🤖 **Multi-LLM Provider Engine**  
+  Effortlessly switch between 6 major LLM providers:
+  - ⚡ **Groq** (`llama-3.1-8b-instant`, `llama-3.3-70b-versatile`, `gemma2-9b-it`)
+  - 🧠 **OpenAI** (`gpt-4o`, `gpt-4o-mini`, `o3-mini`)
+  - 🌐 **OpenRouter** (`meta-llama/llama-3.3-70b-instruct`, `anthropic/claude-3.5-sonnet`)
+  - 🔬 **DeepSeek** (`deepseek-chat`, `deepseek-reasoner`)
+  - ♊ **Google Gemini** (`gemini-2.0-flash`, `gemini-1.5-pro`)
+  - 🦙 **Ollama (Local)** (`llama3.1`, `qwen2.5`, `mistral`)
 - 🎙️ **Hands-Free Neural Wake Word ("Hey Nexa")**  
   Powered by `openWakeWord` ONNX neural stream and dynamic VAD audio recording on Windows.
 - 🗣️ **Neural Voice Synthesis (Piper TTS)**  
   High-fidelity offline British female voice output using `en_GB-alba-medium.onnx` via Rhasspy Piper.
-- ⚡ **Groq Ultra-Fast ReAct Agent Engine**  
-  Uses `llama-3.1-8b-instant` (~100ms response time) with automatic 429 rate-limit fallback and text-embedded tool call parsers (`<desktop_apps>...</desktop_apps>`).
 - 💬 **Continuous Multi-Turn Follow-Up Mode**  
   After responding, NEXA automatically keeps listening for follow-up commands so you can have fluid, multi-step conversations without repeating the wake word.
 - 🌐 **Live Web Search & Weather Engine**  
   Real-time DuckDuckGo live web search and instant weather reporting via `wttr.in` for any location.
 - 📁 **Multi-Partition File System Access**  
-  Full access across `C:\`, `D:\`, `E:\`, and Windows user directories (`Documents`, `Downloads`, `Desktop`, `Pictures`, `Videos`) with safe permission handling.
-- 🖥️ **5-Layer Windows Application Launcher**  
-  Launches Windows apps via URI protocols (`spotify:`, `calculator:`), executables, Microsoft Store UWP apps (`shell:AppsFolder`), and AppData paths.
-- ⚙️ **Safe Shell Execution Engine**  
-  Execute PowerShell and CMD terminal commands with automatic interactive safety prompts for sensitive commands.
+  Full access across `C:\`, `D:\`, `E:\`, and Windows user directories (`Documents`, `Downloads`, `Desktop`, `Pictures`, `Videos`).
 
 ---
 
-## 🏗️ System Architecture
+## 🚀 Environment Configuration (`.env`)
 
-```
-                       ┌────────────────────────┐
-                       │   Microphone Input     │
-                       └───────────┬────────────┘
-                                   │
-                    ┌──────────────▼──────────────┐
-                    │  Python openWakeWord Engine │
-                    │     Trigger: "Hey Nexa"     │
-                    └──────────────┬──────────────┘
-                                   │
-                    ┌──────────────▼──────────────┐
-                    │  OpenAI Whisper STT (Groq)  │
-                    │   Converts speech to text   │
-                    └──────────────┬──────────────┘
-                                   │
-                    ┌──────────────▼──────────────┐
-                    │   ReAct AI Agent Loop (Go)  │
-                    │    llama-3.1-8b-instant     │
-                    └──────┬───────────────┬──────┘
-                           │               │
-            ┌──────────────▼──────┐ ┌──────▼──────────────┐
-            │   Tool Executions   │ │  Piper Neural TTS   │
-            │ • desktop_apps      │ │  Voice Synthesis    │
-            │ • filesystem        │ └─────────────────────┘
-            │ • web               │
-            │ • run_command       │
-            └─────────────────────┘
-```
-
----
-
-## 🛠️ Prerequisites
-
-1. **Go**: Version `1.20` or higher.
-2. **Python**: Version `3.10` or higher with required packages:
-   ```bash
-   pip install sounddevice numpy openwakeword onnxruntime
-   ```
-3. **Groq API Key**: Get a free API key at [console.groq.com](https://console.groq.com/keys).
-
----
-
-## 🚀 Installation & Setup
-
-### 1. Clone Repository
-
-```bash
-git clone https://github.com/your-username/nexa.git
-cd nexa
-```
-
-### 2. Configure Environment (`.env`)
-
-Create or edit `.env` in the root directory:
+Choose your preferred LLM provider in `.env`:
 
 ```env
-JARVIS_LLM_PROVIDER=groq
-GROQ_API_KEY=gsk_your_groq_api_key_here
-JARVIS_GROQ_MODEL=llama-3.1-8b-instant
-JARVIS_ENABLE_TTS=true
+# Supported Providers: groq, openai, openrouter, deepseek, gemini, ollama
+NEXA_LLM_PROVIDER=groq
+
+# Groq API (Free: https://console.groq.com/keys)
+GROQ_API_KEY=gsk_your_groq_key_here
+NEXA_GROQ_MODEL=llama-3.1-8b-instant
+
+# OpenAI API (https://platform.openai.com/api-keys)
+OPENAI_API_KEY=sk-your_openai_key_here
+NEXA_OPENAI_MODEL=gpt-4o-mini
+
+# OpenRouter API (https://openrouter.ai/keys)
+OPENROUTER_API_KEY=sk-or-v1-your_openrouter_key_here
+NEXA_OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct
+
+# DeepSeek API (https://platform.deepseek.com/api_keys)
+DEEPSEEK_API_KEY=sk-your_deepseek_key_here
+NEXA_DEEPSEEK_MODEL=deepseek-chat
+
+# Google Gemini (Free: https://aistudio.google.com/apikey)
+GEMINI_API_KEY=your_gemini_key_here
+NEXA_GEMINI_MODEL=gemini-2.0-flash
+
+# Ollama Local (http://localhost:11434)
+NEXA_OLLAMA_URL=http://localhost:11434
+NEXA_OLLAMA_MODEL=llama3.1
+
+# Voice Output
+NEXA_ENABLE_TTS=true
+```
+
+---
+
+## 🎮 CLI Usage & Provider Override
+
+### Switch Providers & Models on the Fly
+
+Use `-p` (`--provider`) and `-m` (`--model`) flags to instantly switch models without editing `.env`:
+
+```powershell
+# Run with Groq 70B
+.\nexa.exe ask "Who won the F1 championship?" -p groq -m llama-3.3-70b-versatile
+
+# Run with OpenAI GPT-4o-mini
+.\nexa.exe ask "Summarize this file" -p openai -m gpt-4o-mini
+
+# Run with DeepSeek Chat
+.\nexa.exe ask "Explain quantum computing" -p deepseek -m deepseek-chat
+
+# Start Hands-Free Mode with OpenRouter
+.\nexa.exe listen -p openrouter -m meta-llama/llama-3.3-70b-instruct
 ```
 
 ### 3. Build Executable
 
 ```bash
-go build -o jarvis.exe ./cmd/jarvis/
+go build -o nexa.exe ./cmd/nexa/
 ```
 
 ---
@@ -109,7 +107,7 @@ go build -o jarvis.exe ./cmd/jarvis/
 Start NEXA's persistent voice listening engine:
 
 ```powershell
-.\jarvis.exe listen
+.\nexa.exe listen
 ```
 
 - Say **"Hey Nexa"** or **"Nexa"** to activate.
@@ -121,7 +119,7 @@ Start NEXA's persistent voice listening engine:
 ### 💬 2. Interactive Terminal Chat Mode
 
 ```powershell
-.\jarvis.exe chat -t
+.\nexa.exe chat -t
 ```
 Runs an interactive colored REPL interface in PowerShell with text-to-speech output enabled (`-t`).
 
@@ -130,7 +128,7 @@ Runs an interactive colored REPL interface in PowerShell with text-to-speech out
 ### ❓ 3. Single Question (CLI Mode)
 
 ```powershell
-.\jarvis.exe ask "Open drive E in File Manager" -t
+.\nexa.exe ask "Open drive E in File Manager" -t
 ```
 
 ---
@@ -151,7 +149,7 @@ Runs an interactive colored REPL interface in PowerShell with text-to-speech out
 ```
 .
 ├── cmd/
-│   └── jarvis/           # Main CLI application entry point (cobra commands)
+│   └── nexa/             # Main CLI application entry point (cobra commands)
 ├── config/               # Environment & system prompt configurations
 ├── core/                 # ReAct agent execution loop & hybrid tool parsers
 ├── llm/                  # Groq API client with automatic rate-limit fallbacks

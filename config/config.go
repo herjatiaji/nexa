@@ -26,6 +26,18 @@ type Config struct {
 	OllamaURL   string
 	OllamaModel string
 
+	// OpenAI
+	OpenAIAPIKey string
+	OpenAIModel  string
+
+	// OpenRouter
+	OpenRouterAPIKey string
+	OpenRouterModel  string
+
+	// DeepSeek
+	DeepSeekAPIKey string
+	DeepSeekModel  string
+
 	// Agent
 	SystemPrompt  string
 	MaxIterations int
@@ -47,22 +59,28 @@ func LoadConfig() (*Config, error) {
 		_ = godotenv.Load(filepath.Join(exeDir, ".env"))
 	}
 
-	provider := getEnv("JARVIS_LLM_PROVIDER", "gemini")
+	provider := getNexaEnv("LLM_PROVIDER", "groq")
 	provider = strings.ToLower(strings.TrimSpace(provider))
 
 	cfg := &Config{
-		LLMProvider:   provider,
-		GeminiAPIKey:  os.Getenv("GEMINI_API_KEY"),
-		GeminiModel:   getEnv("JARVIS_GEMINI_MODEL", "gemini-2.0-flash"),
-		GroqAPIKey:    os.Getenv("GROQ_API_KEY"),
-		GroqModel:     getEnv("JARVIS_GROQ_MODEL", "llama-3.1-8b-instant"),
-		OllamaURL:     getEnv("JARVIS_OLLAMA_URL", "http://localhost:11434"),
-		OllamaModel:   getEnv("JARVIS_OLLAMA_MODEL", "llama3.1"),
-		SystemPrompt:  getEnv("JARVIS_SYSTEM_PROMPT", defaultSystemPrompt),
-		MaxIterations: 10,
-		EnableTTS:     getEnv("JARVIS_ENABLE_TTS", "false") == "true",
-		TTSVoice:      getEnv("JARVIS_TTS_VOICE", "en-GB-SoniaNeural"),
-		TTSRate:       0,
+		LLMProvider:      provider,
+		GeminiAPIKey:     getNexaEnv("GEMINI_API_KEY", os.Getenv("GEMINI_API_KEY")),
+		GeminiModel:      getNexaEnv("GEMINI_MODEL", "gemini-2.0-flash"),
+		GroqAPIKey:       getNexaEnv("GROQ_API_KEY", os.Getenv("GROQ_API_KEY")),
+		GroqModel:        getNexaEnv("GROQ_MODEL", "llama-3.1-8b-instant"),
+		OllamaURL:        getNexaEnv("OLLAMA_URL", "http://localhost:11434"),
+		OllamaModel:      getNexaEnv("OLLAMA_MODEL", "llama3.1"),
+		OpenAIAPIKey:     getNexaEnv("OPENAI_API_KEY", os.Getenv("OPENAI_API_KEY")),
+		OpenAIModel:      getNexaEnv("OPENAI_MODEL", "gpt-4o-mini"),
+		OpenRouterAPIKey: getNexaEnv("OPENROUTER_API_KEY", os.Getenv("OPENROUTER_API_KEY")),
+		OpenRouterModel:  getNexaEnv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct"),
+		DeepSeekAPIKey:   getNexaEnv("DEEPSEEK_API_KEY", os.Getenv("DEEPSEEK_API_KEY")),
+		DeepSeekModel:    getNexaEnv("DEEPSEEK_MODEL", "deepseek-chat"),
+		SystemPrompt:     getNexaEnv("SYSTEM_PROMPT", defaultSystemPrompt),
+		MaxIterations:    10,
+		EnableTTS:        getNexaEnv("ENABLE_TTS", "false") == "true",
+		TTSVoice:         getNexaEnv("TTS_VOICE", "en-GB-SoniaNeural"),
+		TTSRate:          0,
 	}
 
 	// Validate provider-specific requirements
@@ -77,17 +95,35 @@ func LoadConfig() (*Config, error) {
 			return nil, fmt.Errorf("GROQ_API_KEY environment variable is required when using Groq provider.\n" +
 				"Get your free API key at: https://console.groq.com/keys")
 		}
+	case "openai":
+		if cfg.OpenAIAPIKey == "" {
+			return nil, fmt.Errorf("OPENAI_API_KEY environment variable is required when using OpenAI provider.\n" +
+				"Get your API key at: https://platform.openai.com/api-keys")
+		}
+	case "openrouter":
+		if cfg.OpenRouterAPIKey == "" {
+			return nil, fmt.Errorf("OPENROUTER_API_KEY environment variable is required when using OpenRouter provider.\n" +
+				"Get your API key at: https://openrouter.ai/keys")
+		}
+	case "deepseek":
+		if cfg.DeepSeekAPIKey == "" {
+			return nil, fmt.Errorf("DEEPSEEK_API_KEY environment variable is required when using DeepSeek provider.\n" +
+				"Get your API key at: https://platform.deepseek.com/api_keys")
+		}
 	case "ollama":
-		// No API key needed, just check URL is set
+		// No API key needed
 	default:
-		return nil, fmt.Errorf("unsupported LLM provider: %q (supported: gemini, groq, ollama)", cfg.LLMProvider)
+		return nil, fmt.Errorf("unsupported LLM provider: %q (supported: groq, gemini, ollama, openai, openrouter, deepseek)", cfg.LLMProvider)
 	}
 
 	return cfg, nil
 }
 
-func getEnv(key, fallback string) string {
-	if val := os.Getenv(key); val != "" {
+func getNexaEnv(suffix, fallback string) string {
+	if val := os.Getenv("NEXA_" + suffix); val != "" {
+		return val
+	}
+	if val := os.Getenv("JARVIS_" + suffix); val != "" {
 		return val
 	}
 	return fallback

@@ -33,7 +33,7 @@ func RecordWAV(durationSec int) (string, error) {
 		return "", fmt.Errorf("audio recording currently supported on Windows")
 	}
 
-	tempWav := filepath.Join(os.TempDir(), fmt.Sprintf("jarvis_record_%d.wav", time.Now().UnixNano()))
+	tempWav := filepath.Join(os.TempDir(), fmt.Sprintf("nexa_record_%d.wav", time.Now().UnixNano()))
 	escapedWav := strings.ReplaceAll(tempWav, "'", "''")
 
 	psScript := fmt.Sprintf(`

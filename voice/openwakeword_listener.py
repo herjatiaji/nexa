@@ -108,7 +108,7 @@ def audio_callback(indata, frames, time_info, status):
         if should_stop:
             full_audio = np.concatenate(recorded_chunks)
             
-            temp_wav = os.path.join(tempfile.gettempdir(), f"jarvis_cmd_{int(time.time()*1000)}.wav")
+            temp_wav = os.path.join(tempfile.gettempdir(), f"nexa_cmd_{int(time.time()*1000)}.wav")
             with wave.open(temp_wav, 'wb') as wf:
                 wf.setnchannels(1)
                 wf.setsampwidth(2) # 16-bit PCM
