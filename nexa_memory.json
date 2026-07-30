@@ -8,5 +8,10 @@
     "key": "backend",
     "value": "Go",
     "updated_at": "2026-07-31T00:27:44.0268321+07:00"
+  },
+  {
+    "key": "preferred_browser",
+    "value": "Chrome Browser",
+    "updated_at": "2026-07-31T00:47:57.4949601+07:00"
   }
 ]
