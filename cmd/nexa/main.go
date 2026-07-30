@@ -11,6 +11,7 @@ import (
 
 	"github.com/heraji/jarvis/config"
 	"github.com/heraji/jarvis/core"
+	"github.com/heraji/jarvis/gui"
 	"github.com/heraji/jarvis/llm"
 	"github.com/heraji/jarvis/memory"
 	"github.com/heraji/jarvis/tools"
@@ -18,6 +19,7 @@ import (
 	"github.com/heraji/jarvis/tools/filesystem"
 	memorytool "github.com/heraji/jarvis/tools/memory"
 	"github.com/heraji/jarvis/tools/terminal"
+	"github.com/heraji/jarvis/tools/vision"
 	"github.com/heraji/jarvis/tools/web"
 	"github.com/heraji/jarvis/voice"
 )
@@ -55,6 +57,7 @@ executes tool calls, manages files, searches the live web, and automates Windows
 	rootCmd.AddCommand(chatCmd())
 	rootCmd.AddCommand(askCmd())
 	rootCmd.AddCommand(listenCmd())
+	rootCmd.AddCommand(guiCmd())
 	rootCmd.AddCommand(voiceCmd())
 	rootCmd.AddCommand(versionCmd())
 
@@ -64,10 +67,10 @@ executes tool calls, manages files, searches the live web, and automates Windows
 }
 
 // initAgent sets up the config, LLM, tools, and agent.
-func initAgent() (*core.Agent, *config.Config, error) {
+func initAgent() (*core.Agent, *config.Config, *memory.MemoryStore, error) {
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		return nil, nil, fmt.Errorf("config error: %w", err)
+		return nil, nil, nil, fmt.Errorf("config error: %w", err)
 	}
 
 	// Apply CLI flag overrides if provided
@@ -98,7 +101,7 @@ func initAgent() (*core.Agent, *config.Config, error) {
 	dim.Printf("🔌 Connecting to %s (%s)...\n", cfg.LLMProvider, activeModel)
 	llmProvider, err := llm.New(cfg)
 	if err != nil {
-		return nil, nil, fmt.Errorf("LLM error: %w", err)
+		return nil, nil, nil, fmt.Errorf("LLM error: %w", err)
 	}
 
 	memStore := memory.NewMemoryStore()
@@ -119,6 +122,7 @@ func initAgent() (*core.Agent, *config.Config, error) {
 	registry.Register(apps.New())
 	registry.Register(web.New())
 	registry.Register(memorytool.New(memStore))
+	registry.Register(vision.New())
 
 	// Inject remembered facts into system prompt
 	rememberedFacts := memStore.FormatForSystemPrompt()
@@ -140,7 +144,7 @@ func initAgent() (*core.Agent, *config.Config, error) {
 	}
 
 	dim.Printf("✅ Ready! (provider: %s | model: %s%s)\n\n", cfg.LLMProvider, activeModel, ttsInfo)
-	return agent, cfg, nil
+	return agent, cfg, memStore, nil
 }
 
 func getActiveModelName(cfg *config.Config) string {
@@ -167,7 +171,7 @@ func chatCmd() *cobra.Command {
 		Use:   "chat",
 		Short: "Start an interactive chat session with NEXA",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			agent, cfg, err := initAgent()
+			agent, cfg, _, err := initAgent()
 			if err != nil {
 				return err
 			}
@@ -258,7 +262,7 @@ func askCmd() *cobra.Command {
 		Short: "Ask NEXA a single question",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			agent, cfg, err := initAgent()
+			agent, cfg, _, err := initAgent()
 			if err != nil {
 				return err
 			}
@@ -294,7 +298,7 @@ func listenCmd() *cobra.Command {
 		Use:   "listen",
 		Short: "Start continuous hands-free voice trigger mode (say 'Nexa' or 'Hey Nexa' to activate)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			agent, cfg, err := initAgent()
+			agent, cfg, _, err := initAgent()
 			if err != nil {
 				return err
 			}
@@ -513,6 +517,22 @@ func voiceCmd() *cobra.Command {
 	vCmd.AddCommand(listCmd)
 	vCmd.AddCommand(micCmd)
 	return vCmd
+}
+
+func guiCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "gui",
+		Short: "Launch NEXA Modern Desktop GUI Dashboard",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			agent, cfg, memStore, err := initAgent()
+			if err != nil {
+				return err
+			}
+			cyan.Println("🚀 Starting NEXA GUI Live Server & Desktop Dashboard...")
+			srv := gui.NewServer(agent, cfg, memStore, 18420)
+			return srv.Start()
+		},
+	}
 }
 
 func versionCmd() *cobra.Command {
