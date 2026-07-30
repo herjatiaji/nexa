@@ -22,7 +22,7 @@ type WakeWordListener struct {
 // NewWakeWordListener creates a new wake word listener.
 func NewWakeWordListener(phrase string, onWake func()) *WakeWordListener {
 	if phrase == "" {
-		phrase = "Friday"
+		phrase = "Nexa"
 	}
 	return &WakeWordListener{
 		WakePhrase: phrase,
@@ -30,15 +30,17 @@ func NewWakeWordListener(phrase string, onWake func()) *WakeWordListener {
 	}
 }
 
-// CheckMicrophone verifies if Speech Engine / Python openWakeWord can access mic.
+// CheckMicrophone verifies if Speech Engine can access the default audio device.
 func CheckMicrophone() (bool, string) {
-	if runtime.GOOS != "windows" {
-		return false, "Microphone check only supported on Windows OS"
+	scriptPath := filepath.Join("voice", "openwakeword_listener.py")
+	if _, err := os.Stat(scriptPath); err == nil {
+		if pyExe, err := exec.LookPath("python"); err == nil && pyExe != "" {
+			return true, "openWakeWord Engine Ready (Python Neural ONNX Stream)"
+		}
 	}
 
-	pyPath, err := exec.LookPath("python")
-	if err == nil && pyPath != "" {
-		return true, "openWakeWord Engine Ready (Python Neural ONNX Stream)"
+	if runtime.GOOS != "windows" {
+		return false, "Microphone check only supported on Windows OS"
 	}
 
 	psScript := `
@@ -60,7 +62,7 @@ try {
 
 	result := strings.TrimSpace(string(out))
 	if strings.HasPrefix(result, "OK") {
-		return true, "Headless Speech Engine Ready (Background Mode - No UI Popup)"
+		return true, "Nexa Speech Engine Ready (Windows Speech Recognition)"
 	}
 
 	return false, fmt.Sprintf("Speech Engine status: %s", result)
@@ -74,15 +76,15 @@ type persistentEngine struct {
 
 var globalEngine *persistentEngine
 
-// StartPersistentListener starts a single persistent process for Stage 1 Wake Word Detection.
-// Prefers openWakeWord (Python neural ONNX stream on 80ms audio frames) for ultra-accurate detection,
-// with SAPI5 Constrained Grammar fallback.
+// StartPersistentListener starts a continuous background recognition engine.
+// Tries launching openWakeWord Python Neural ONNX engine first (ultra-high sensitivity).
+// Fallbacks to PowerShell SAPI5 if Python is unavailable.
 func StartPersistentListener() (<-chan string, func(), error) {
 	if runtime.GOOS != "windows" {
 		return nil, nil, fmt.Errorf("voice listening is only supported on Windows")
 	}
 
-	// 1. Try launching openWakeWord Python engine first
+	// 1. Try openWakeWord Python Neural ONNX Engine first (Fastest & Most Sensitive)
 	scriptPath := filepath.Join("voice", "openwakeword_listener.py")
 	if _, err := os.Stat(scriptPath); err == nil {
 		if pyExe, err := exec.LookPath("python"); err == nil && pyExe != "" {
@@ -94,7 +96,7 @@ func StartPersistentListener() (<-chan string, func(), error) {
 		}
 	}
 
-	// 2. Fallback: PowerShell SAPI5 Constrained Engine
+	// 2. Fallback: PowerShell SAPI5 Engine
 	psScript := `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Speech
@@ -104,12 +106,22 @@ $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine($culture)
 $engine.SetInputToDefaultAudioDevice()
 
 $choices = New-Object System.Speech.Recognition.Choices
-$choices.Add(@("Friday", "Hey Friday", "Hello Friday", "Hi Friday", "Yo Friday"))
+$choices.Add(@("Nexa", "Hey Nexa", "Hello Nexa", "Hi Nexa", "Yo Nexa", "Next", "Hey Next", "Alexa", "Hey Alexa", "Friday", "Hey Friday", "Jarvis", "Hey Jarvis"))
 $gb = New-Object System.Speech.Recognition.GrammarBuilder
 $gb.Append($choices)
 $grammar = New-Object System.Speech.Recognition.Grammar($gb)
 $grammar.Name = "wake"
 $engine.LoadGrammar($grammar)
+
+Register-ObjectEvent -InputObject $engine -EventName SpeechRecognized -Action {
+    $text = $Event.SourceEventArgs.Result.Text
+    if ($text) {
+        Write-Output "WAKE:Hey Nexa"
+        [Console]::Out.Flush()
+    }
+}
+
+$engine.RecognizeAsync([System.Speech.Recognition.RecognizeMode]::Multiple)
 
 Write-Output "ENGINE_READY"
 [Console]::Out.Flush()
@@ -117,30 +129,9 @@ Write-Output "ENGINE_READY"
 while ($true) {
     $line = [Console]::In.ReadLine()
     if ($line -eq "QUIT") { break }
-
-    if ($line -eq "PAUSE") {
-        try { $engine.SetInputToNull() } catch {}
-        Write-Output "PAUSED"
-    }
-    elseif ($line -eq "RESUME") {
-        try { $engine.SetInputToDefaultAudioDevice() } catch {}
-        Write-Output "RESUMED"
-    }
-    elseif ($line -eq "LISTEN_WAKE") {
-        try {
-            $result = $engine.Recognize([TimeSpan]::FromSeconds(4))
-            if ($result -and $result.Confidence -gt 0.25) {
-                Write-Output "WAKE:$($result.Text):$([math]::Round($result.Confidence, 2))"
-            } else {
-                Write-Output "SILENCE"
-            }
-        } catch {
-            Write-Output "SILENCE"
-        }
-    }
-    [Console]::Out.Flush()
 }
 
+$engine.RecognizeAsyncStop()
 $engine.Dispose()
 Write-Output "ENGINE_STOPPED"
 `
@@ -237,15 +228,15 @@ try {
     $engine.SetInputToDefaultAudioDevice()
 
     $Choices = New-Object System.Speech.Recognition.Choices
-    $Choices.Add(@("Jarvis", "Hey Jarvis", "Friday", "Hey Friday", "Computer"))
+    $Choices.Add(@("Nexa", "Hey Nexa", "Hello Nexa", "Hi Nexa", "Yo Nexa", "Alexa"))
     $gb = New-Object System.Speech.Recognition.GrammarBuilder
     $gb.Append($Choices)
     $grammar = New-Object System.Speech.Recognition.Grammar($gb)
 
     $engine.LoadGrammar($grammar)
-    $result = $engine.Recognize([TimeSpan]::FromSeconds(4))
+    $result = $engine.Recognize([TimeSpan]::FromSeconds(2))
 
-    if ($result -and $result.Confidence -gt 0.25) {
+    if ($result -and $result.Text) {
         Write-Output "WAKE:$($result.Text)"
     }
     $engine.Dispose()

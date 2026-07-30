@@ -237,7 +237,7 @@ func askCmd() *cobra.Command {
 func listenCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "listen",
-		Short: "Start continuous hands-free voice trigger mode (say 'Friday' or 'Hey Friday' to activate)",
+		Short: "Start continuous hands-free voice trigger mode (say 'Nexa' or 'Hey Nexa' to activate)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			agent, cfg, err := initAgent()
 			if err != nil {
@@ -247,8 +247,8 @@ func listenCmd() *cobra.Command {
 			ttsEngine := voice.NewTTS(cfg.TTSVoice, cfg.TTSRate, true)
 
 			cyan.Println("╔══════════════════════════════════════════════════════════════╗")
-			cyan.Println("║         JARVIS Hands-Free Voice Activation Mode              ║")
-			cyan.Println("║   Say 'Hey Friday' or 'Friday' to activate speech listening   ║")
+			cyan.Println("║          NEXA Hands-Free Voice Activation Mode               ║")
+			cyan.Println("║    Say 'Hey Nexa' or 'Nexa' to activate speech listening     ║")
 			cyan.Println("╚══════════════════════════════════════════════════════════════╝")
 			fmt.Println()
 
@@ -276,9 +276,9 @@ func listenCmd() *cobra.Command {
 			defer cleanup()
 
 			green.Println("✅ Persistent speech engine is running!")
-			ttsEngine.SpeakAsync("Friday voice activation online. At your service, sir.")
+			ttsEngine.SpeakAsync("Nexa voice activation online. At your service, sir.")
 			fmt.Println()
-			yellow.Println("👂 Listening for wake word ('Hey Friday')...")
+			yellow.Println("👂 Listening for wake word ('Hey Nexa')...")
 
 			for {
 				result, ok := <-resultChan
@@ -289,13 +289,19 @@ func listenCmd() *cobra.Command {
 
 				if strings.HasPrefix(result, "WAKE:") {
 					parts := strings.Split(result, ":")
-					wakeWord := "Friday"
+					wakeWord := "Hey Nexa"
 					if len(parts) >= 2 {
 						wakeWord = parts[1]
 					}
 
-					green.Printf("⚡ Wake word detected: \"%s\" — FRIDAY activated!\n", wakeWord)
-					ttsEngine.SpeakAsync("Yes, sir?")
+					green.Printf("⚡ Wake word detected: \"%s\" — NEXA activated!\n", wakeWord)
+
+					// PAUSE openWakeWord so it doesn't hear TTS greeting through speakers
+					_ = voice.SendListenCommand("PAUSE")
+					ttsEngine.Speak("Yes, sir?")
+					// Don't RESUME here — Python is already in RECORDING state
+					// It will record the user's command and send COMMAND_WAV:
+
 					cyan.Println("🎙️  Listening for command (OpenAI Whisper Large v3 STT)...")
 
 				} else if strings.HasPrefix(result, "COMMAND_WAV:") {
@@ -314,6 +320,7 @@ func listenCmd() *cobra.Command {
 					if err != nil || cleanCmd == "" || cleanLower == "thank you" || cleanLower == "thanks" || cleanLower == "thanks for watching" || cleanLower == "you" {
 						dim.Println("   (silence / no command detected)")
 						_ = voice.SendListenCommand("RESUME")
+						yellow.Println("👂 Listening for wake word ('Hey Nexa')...")
 						continue
 					}
 
@@ -332,20 +339,25 @@ func listenCmd() *cobra.Command {
 					if err != nil {
 						red.Printf("❌ Error: %v\n\n", err)
 						_ = voice.SendListenCommand("RESUME")
+						yellow.Println("👂 Listening for wake word ('Hey Nexa')...")
 						continue
 					}
 
 					fmt.Println()
-					green.Print("JARVIS > ")
+					green.Print("NEXA > ")
 					fmt.Println(response)
 					fmt.Println()
+
+					// PAUSE before TTS to prevent openWakeWord hearing speaker audio
+					_ = voice.SendListenCommand("PAUSE")
 
 					// Speak response fully
 					ttsEngine.Speak(response)
 
-					// Resume openWakeWord engine after TTS finishes speaking
-					_ = voice.SendListenCommand("RESUME")
-					yellow.Println("👂 Listening for wake word ('Hey Friday')...")
+					// Continuous Multi-Turn Follow-Up Mode:
+					// Immediately listen for user's follow-up command without requiring 'Hey Nexa' again!
+					_ = voice.SendListenCommand("RECORD_DIRECT")
+					cyan.Println("🎙️  Listening for follow-up command...")
 				}
 			}
 

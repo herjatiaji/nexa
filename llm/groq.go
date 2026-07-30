@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/heraji/jarvis/types"
 	openai "github.com/sashabaranov/go-openai"
@@ -42,6 +43,8 @@ func (g *Groq) Chat(messages []types.Message, tools []types.ToolDefinition) (*ty
 		}
 		if msg.ToolCallID != "" {
 			oaiMsg.ToolCallID = msg.ToolCallID
+		} else if msg.Role == "tool" {
+			oaiMsg.ToolCallID = "call_default"
 		}
 		if msg.Name != "" {
 			oaiMsg.Name = msg.Name
@@ -88,7 +91,19 @@ func (g *Groq) Chat(messages []types.Message, tools []types.ToolDefinition) (*ty
 	// Send request
 	resp, err := g.client.CreateChatCompletion(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("groq API error: %w", err)
+		// Fallback 1: Retry with high-capacity model (llama-3.1-8b-instant)
+		if req.Model != "llama-3.1-8b-instant" {
+			req.Model = "llama-3.1-8b-instant"
+			resp, err = g.client.CreateChatCompletion(ctx, req)
+		}
+		// Fallback 2: If 400 Bad Request occurs (Groq function call formatting error), retry without tool definitions
+		if err != nil && len(req.Tools) > 0 {
+			req.Tools = nil
+			resp, err = g.client.CreateChatCompletion(ctx, req)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("groq API error: %w", err)
+		}
 	}
 
 	if len(resp.Choices) == 0 {
@@ -101,9 +116,13 @@ func (g *Groq) Chat(messages []types.Message, tools []types.ToolDefinition) (*ty
 	}
 
 	// Parse tool calls
-	for _, tc := range choice.Message.ToolCalls {
+	for i, tc := range choice.Message.ToolCalls {
+		callID := tc.ID
+		if callID == "" {
+			callID = fmt.Sprintf("call_%d_%d", time.Now().UnixNano(), i)
+		}
 		result.ToolCalls = append(result.ToolCalls, types.ToolCall{
-			ID:        tc.ID,
+			ID:        callID,
 			Name:      tc.Function.Name,
 			Arguments: tc.Function.Arguments,
 		})

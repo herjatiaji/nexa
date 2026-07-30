@@ -85,27 +85,127 @@ func (a *AppsTool) launchApp(appName, args string) (string, error) {
 		return "", fmt.Errorf("app_name is required for launch action")
 	}
 
-	// Normalize app alias names
-	executable := normalizeAppName(appName)
+	cleanApp := strings.TrimSpace(strings.ToLower(appName))
+	cleanApp = strings.TrimSuffix(cleanApp, ".exe")
 
-	psScript := ""
-	if args != "" {
-		psScript = fmt.Sprintf(`Start-Process -FilePath "%s" -ArgumentList "%s" -ErrorAction Stop`, executable, args)
+	psScript := fmt.Sprintf(`
+$name = "%s"
+$args = "%s"
+
+# Special Layer 0: File Manager, Partitions & Windows Folder Shortcuts
+if ($name -eq "file manager" -or $name -eq "explorer" -or $name -eq "files" -or $name -eq "this pc" -or $name -eq "my computer") {
+	try {
+		if ($args -ne "") {
+			Start-Process "explorer.exe" -ArgumentList $args -ErrorAction Stop
+		} else {
+			Start-Process "explorer.exe" -ErrorAction Stop
+		}
+		"OK"
+		exit 0
+	} catch {}
+}
+
+# Handle Drive Partitions (e.g. D, E, D:, E:, drive d, drive e, partition d)
+if ($name -match '^(drive|partition)?\s*([a-zA-Z]):?$' -or $args -match '^[a-zA-Z]:\\?$') {
+	try {
+		$targetDrive = $name
+		if ($args -ne "") { $targetDrive = $args }
+		$targetDrive = $targetDrive -replace '(?i)drive|partition|\s', ''
+		if ($targetDrive.Length -eq 1) { $targetDrive = $targetDrive + ":" }
+		$targetPath = $targetDrive + "\"
+		if (Test-Path $targetPath) {
+			Start-Process "explorer.exe" -ArgumentList $targetPath -ErrorAction Stop
+			"OK"
+			exit 0
+		}
+	} catch {}
+}
+
+$folderMap = @{
+	'documents' = "$env:USERPROFILE\Documents"
+	'downloads' = "$env:USERPROFILE\Downloads"
+	'desktop'   = "$env:USERPROFILE\Desktop"
+	'pictures'  = "$env:USERPROFILE\Pictures"
+	'videos'    = "$env:USERPROFILE\Videos"
+	'music'     = "$env:USERPROFILE\Music"
+}
+if ($folderMap.ContainsKey($name)) {
+	try {
+		Start-Process "explorer.exe" -ArgumentList $folderMap[$name] -ErrorAction Stop
+		"OK"
+		exit 0
+	} catch {}
+}
+
+# Layer 1: App Protocol URIs
+$uriMap = @{
+	'spotify' = 'spotify:'
+	'calculator' = 'calculator:'
+	'calc' = 'calculator:'
+	'settings' = 'ms-settings:'
+	'store' = 'ms-windows-store:'
+	'mail' = 'outlookmail:'
+	'calendar' = 'outlookcal:'
+	'photos' = 'ms-photos:'
+	'camera' = 'microsoft.windows.camera:'
+}
+
+if ($uriMap.ContainsKey($name)) {
+	try {
+		Start-Process $uriMap[$name] -ErrorAction Stop
+		"OK"
+		exit 0
+	} catch {}
+}
+
+# Layer 2: Standard Executable Launch (detached)
+try {
+	if ($args -ne "") {
+		Start-Process -FilePath $name -ArgumentList $args -WindowStyle Normal -ErrorAction Stop
 	} else {
-		psScript = fmt.Sprintf(`Start-Process -FilePath "%s" -ErrorAction Stop`, executable)
+		Start-Process -FilePath $name -WindowStyle Normal -ErrorAction Stop
 	}
+	"OK"
+	exit 0
+} catch {}
+
+# Layer 3: Executable with .exe extension
+try {
+	$exeName = "$name.exe"
+	if ($args -ne "") {
+		Start-Process -FilePath $exeName -ArgumentList $args -WindowStyle Normal -ErrorAction Stop
+	} else {
+		Start-Process -FilePath $exeName -WindowStyle Normal -ErrorAction Stop
+	}
+	"OK"
+	exit 0
+} catch {}
+
+# Layer 4: Windows Start Apps Database (shell:AppsFolder) for UWP/Microsoft Store apps
+try {
+	$app = Get-StartApps | Where-Object { $_.Name -like "*$name*" -or $_.AppID -like "*$name*" } | Select-Object -First 1
+	if ($app) {
+		Start-Process "shell:AppsFolder\$($app.AppID)" -ErrorAction Stop
+		"OK"
+		exit 0
+	}
+} catch {}
+
+# Layer 5: AppData WindowsApps path fallback
+$userApps = "$env:LOCALAPPDATA\Microsoft\WindowsApps\$name.exe"
+if (Test-Path $userApps) {
+	Start-Process -FilePath $userApps -ErrorAction Stop
+	"OK"
+	exit 0
+}
+
+throw "Application '$name' could not be launched via URI, Executable, or Start Menu database."
+`, cleanApp, args)
 
 	cmd := exec.Command("powershell", "-NoProfile", "-Command", psScript)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		// Fallback attempt via cmd start
-		fallbackCmd := exec.Command("cmd", "/c", "start", "", executable)
-		if args != "" {
-			fallbackCmd = exec.Command("cmd", "/c", "start", "", executable, args)
-		}
-		if fbErr := fallbackCmd.Run(); fbErr != nil {
-			return "", fmt.Errorf("failed to launch %s: %s (err: %v)", appName, strings.TrimSpace(string(out)), err)
-		}
+		return "", fmt.Errorf("failed to launch %s: %s", appName, strings.TrimSpace(string(out)))
 	}
 
 	if args != "" {

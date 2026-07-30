@@ -33,13 +33,15 @@ cooldown_sec = 2.0   # Cooldown period
 last_trigger_time = 0.0
 
 current_state = "WAKE_SEARCH"
+pause_after_recording = False  # Deferred PAUSE flag
 recorded_chunks = []
 silence_chunks = 0
 has_speech_started = False
 
-VAD_ENERGY_THRESHOLD = 200   # RMS Energy threshold for speech vs silence
-SILENCE_CUTOFF_CHUNKS = 15   # 1.2s silence cutoff
-MAX_RECORDING_CHUNKS  = 62   # ~5.0s max recording duration
+VAD_ENERGY_THRESHOLD  = 180   # RMS Energy threshold for speech vs silence
+SILENCE_CUTOFF_CHUNKS = 18   # 18 * 80ms = 1.44s of continuous silence ends recording
+MIN_RECORDING_CHUNKS  = 25   # 25 * 80ms = 2.0s minimum recording buffer (prevents early cutoff)
+MAX_RECORDING_CHUNKS  = 88   # 88 * 80ms = 7.0s max recording duration
 
 def get_audio_int16_and_rms(raw_float):
     int16_chunk = (raw_float * 32767.0).astype(np.int16)
@@ -47,7 +49,7 @@ def get_audio_int16_and_rms(raw_float):
     return int16_chunk, rms
 
 def audio_callback(indata, frames, time_info, status):
-    global current_state, recorded_chunks, last_trigger_time, silence_chunks, has_speech_started
+    global current_state, recorded_chunks, last_trigger_time, silence_chunks, has_speech_started, pause_after_recording
     
     if current_state == "PAUSED":
         return
@@ -69,15 +71,8 @@ def audio_callback(indata, frames, time_info, status):
             if score > threshold:
                 last_trigger_time = now
                 
-                # Format clean wake word trigger name
-                clean_name = "Hey Jarvis"
-                if "alexa" in model_name:
-                    clean_name = "Alexa"
-                elif "rhasspy" in model_name:
-                    clean_name = "Rhasspy"
-                
                 # 1. Trigger Wake Event
-                print(f"WAKE:{clean_name}:{score:.2f}", flush=True)
+                print(f"WAKE:Hey Nexa:{score:.2f}", flush=True)
                 
                 # 2. Reset openWakeWord model internal buffers
                 try:
@@ -87,6 +82,7 @@ def audio_callback(indata, frames, time_info, status):
                 
                 # 3. Transition to RECORDING state from the SAME mic stream
                 current_state = "RECORDING"
+                pause_after_recording = False
                 recorded_chunks = []
                 silence_chunks = 0
                 has_speech_started = False
@@ -103,9 +99,13 @@ def audio_callback(indata, frames, time_info, status):
             if has_speech_started:
                 silence_chunks += 1
                 
-        should_stop = (has_speech_started and silence_chunks >= SILENCE_CUTOFF_CHUNKS) or (len(recorded_chunks) >= MAX_RECORDING_CHUNKS)
+        is_min_duration_reached = len(recorded_chunks) >= MIN_RECORDING_CHUNKS
+        silence_timeout = has_speech_started and silence_chunks >= SILENCE_CUTOFF_CHUNKS
+        max_timeout = len(recorded_chunks) >= MAX_RECORDING_CHUNKS
         
-        if should_stop and len(recorded_chunks) >= 10:
+        should_stop = (is_min_duration_reached and silence_timeout) or max_timeout
+        
+        if should_stop:
             full_audio = np.concatenate(recorded_chunks)
             
             temp_wav = os.path.join(tempfile.gettempdir(), f"jarvis_cmd_{int(time.time()*1000)}.wav")
@@ -122,11 +122,18 @@ def audio_callback(indata, frames, time_info, status):
                 oww_model.reset()
             except:
                 pass
-            last_trigger_time = time.time()
-            current_state = "WAKE_SEARCH"
             recorded_chunks = []
             silence_chunks = 0
             has_speech_started = False
+
+            # If PAUSE was requested during recording, go to PAUSED instead of WAKE_SEARCH
+            if pause_after_recording:
+                current_state = "PAUSED"
+                pause_after_recording = False
+                print("PAUSED", flush=True)
+            else:
+                last_trigger_time = 0.0
+                current_state = "WAKE_SEARCH"
 
 # Start single unified microphone stream (16kHz mono)
 try:
@@ -136,18 +143,36 @@ try:
             if not line or "QUIT" in line:
                 break
             elif "PAUSE" in line:
-                current_state = "PAUSED"
-                print("PAUSED", flush=True)
+                if current_state == "RECORDING":
+                    # Defer pause until recording finishes — don't lose audio
+                    pause_after_recording = True
+                    print("PAUSE_DEFERRED", flush=True)
+                else:
+                    current_state = "PAUSED"
+                    try:
+                        oww_model.reset()
+                    except:
+                        pass
+                    print("PAUSED", flush=True)
             elif "RESUME" in line:
                 try:
                     oww_model.reset()
                 except:
                     pass
-                last_trigger_time = time.time()
+                last_trigger_time = 0.0
                 current_state = "WAKE_SEARCH"
+                pause_after_recording = False
                 recorded_chunks = []
                 silence_chunks = 0
                 has_speech_started = False
                 print("RESUMED", flush=True)
+            elif "RECORD_DIRECT" in line:
+                current_state = "RECORDING"
+                pause_after_recording = False
+                recorded_chunks = []
+                silence_chunks = 0
+                has_speech_started = False
+                print("RECORDING_DIRECT", flush=True)
 except Exception as e:
     print(f"STREAM_ERROR:{e}", flush=True)
+

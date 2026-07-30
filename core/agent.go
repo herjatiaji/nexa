@@ -3,6 +3,9 @@ package core
 import (
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
+	"time"
 
 	"github.com/heraji/jarvis/tools"
 	"github.com/heraji/jarvis/types"
@@ -68,13 +71,17 @@ func (a *Agent) Run(userInput string) (string, error) {
 			return "", fmt.Errorf("LLM error: %w", err)
 		}
 
-		// If no tool calls, this is the final answer
+		// If no native tool calls, check for text-embedded tool calls (e.g. <desktop_apps>{...}</desktop_apps>)
 		if len(resp.ToolCalls) == 0 {
-			a.history = append(a.history, types.Message{
-				Role:    "assistant",
-				Content: resp.Content,
-			})
-			return resp.Content, nil
+			if extractedCall, ok := parseTextToolCall(resp.Content); ok {
+				resp.ToolCalls = append(resp.ToolCalls, extractedCall)
+			} else {
+				a.history = append(a.history, types.Message{
+					Role:    "assistant",
+					Content: resp.Content,
+				})
+				return resp.Content, nil
+			}
 		}
 
 		// Add assistant message with tool calls to history
@@ -116,4 +123,20 @@ func (a *Agent) Reset() {
 	a.history = []types.Message{
 		{Role: "system", Content: a.systemPrompt},
 	}
+}
+
+var textToolCallRegex = regexp.MustCompile(`<([a-zA-Z0-9_]+)>\s*(\{[\s\S]*?\})\s*</[a-zA-Z0-9_]+>`)
+
+func parseTextToolCall(content string) (types.ToolCall, bool) {
+	matches := textToolCallRegex.FindStringSubmatch(content)
+	if len(matches) >= 3 {
+		toolName := strings.TrimSpace(matches[1])
+		toolArgs := strings.TrimSpace(matches[2])
+		return types.ToolCall{
+			ID:        fmt.Sprintf("call_text_%d", time.Now().UnixNano()),
+			Name:      toolName,
+			Arguments: toolArgs,
+		}, true
+	}
+	return types.ToolCall{}, false
 }

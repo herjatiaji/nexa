@@ -121,6 +121,9 @@ func (f *FileSystemTool) Execute(input string) (string, error) {
 func (f *FileSystemTool) readFile(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsPermission(err) || strings.Contains(strings.ToLower(err.Error()), "access is denied") {
+			return fmt.Sprintf("⚠️ Access Restricted: File '%s' requires system administrator permissions.", path), nil
+		}
 		return "", fmt.Errorf("failed to read file: %w", err)
 	}
 
@@ -140,6 +143,9 @@ func (f *FileSystemTool) writeFile(path, content string) (string, error) {
 	}
 
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		if os.IsPermission(err) || strings.Contains(strings.ToLower(err.Error()), "access is denied") {
+			return fmt.Sprintf("⚠️ Access Restricted: Writing to '%s' requires system administrator permissions.", path), nil
+		}
 		return "", fmt.Errorf("failed to write file: %w", err)
 	}
 
@@ -154,6 +160,9 @@ func (f *FileSystemTool) appendFile(path, content string) (string, error) {
 
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
+		if os.IsPermission(err) || strings.Contains(strings.ToLower(err.Error()), "access is denied") {
+			return fmt.Sprintf("⚠️ Access Restricted: Appending to '%s' requires system administrator permissions.", path), nil
+		}
 		return "", fmt.Errorf("failed to open file for appending: %w", err)
 	}
 	defer file.Close()
@@ -167,8 +176,35 @@ func (f *FileSystemTool) appendFile(path, content string) (string, error) {
 }
 
 func (f *FileSystemTool) listDir(path string) (string, error) {
-	entries, err := os.ReadDir(path)
+	cleanPath := strings.TrimSpace(path)
+	cleanLower := strings.ToLower(cleanPath)
+
+	// List all available drive partitions (C:\, D:\, E:\, etc.)
+	if cleanLower == "" || cleanLower == "drives" || cleanLower == "computer" || cleanLower == "this pc" || cleanLower == "thispc" || cleanLower == "root" {
+		var availableDrives []string
+		for _, drive := range "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
+			drivePath := string(drive) + ":\\"
+			if _, err := os.Stat(drivePath); err == nil {
+				availableDrives = append(availableDrives, fmt.Sprintf("💽 Drive %s:\\", string(drive)))
+			}
+		}
+		if len(availableDrives) > 0 {
+			return fmt.Sprintf("Available System Drives / Partitions:\n\n%s", strings.Join(availableDrives, "\n")), nil
+		}
+	}
+
+	// Drive letter normalization: "D", "D:", "E", "E:" -> "D:\", "E:\"
+	if len(cleanPath) == 1 && cleanPath >= "A" && cleanPath <= "z" {
+		cleanPath = strings.ToUpper(cleanPath) + ":\\"
+	} else if len(cleanPath) == 2 && cleanPath[1] == ':' {
+		cleanPath = strings.ToUpper(cleanPath) + "\\"
+	}
+
+	entries, err := os.ReadDir(cleanPath)
 	if err != nil {
+		if os.IsPermission(err) || strings.Contains(strings.ToLower(err.Error()), "access is denied") {
+			return fmt.Sprintf("⚠️ Access Restricted: Directory '%s' requires system administrator permissions.", cleanPath), nil
+		}
 		return "", fmt.Errorf("failed to list directory: %w", err)
 	}
 
@@ -187,10 +223,10 @@ func (f *FileSystemTool) listDir(path string) (string, error) {
 	}
 
 	if len(lines) == 0 {
-		return "Directory is empty.", nil
+		return fmt.Sprintf("Directory %s is empty.", cleanPath), nil
 	}
 
-	return fmt.Sprintf("Contents of %s:\n\n%s", path, strings.Join(lines, "\n")), nil
+	return fmt.Sprintf("Contents of %s:\n\n%s", cleanPath, strings.Join(lines, "\n")), nil
 }
 
 func (f *FileSystemTool) createDir(path string) (string, error) {
