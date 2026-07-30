@@ -33,9 +33,9 @@ type Agent struct {
 
 // NewAgent creates a new Agent with the given LLM and tool registry.
 func NewAgent(llm LLM, registry *tools.Registry, systemPrompt string, maxIterations int) *Agent {
-	// Append current working directory to system prompt
 	cwd, _ := os.Getwd()
-	fullPrompt := systemPrompt + fmt.Sprintf("\n\nCurrent working directory: %s", cwd)
+	currentDate := time.Now().Format("Monday, January 2, 2006")
+	fullPrompt := systemPrompt + fmt.Sprintf("\n\nCurrent Real-Time System Date: %s\nCurrent working directory: %s", currentDate, cwd)
 
 	agent := &Agent{
 		llm:           llm,
@@ -125,18 +125,28 @@ func (a *Agent) Reset() {
 	}
 }
 
-var textToolCallRegex = regexp.MustCompile(`<([a-zA-Z0-9_]+)>\s*(\{[\s\S]*?\})\s*</[a-zA-Z0-9_]+>`)
+var textToolCallRegexes = []*regexp.Regexp{
+	regexp.MustCompile(`<([a-zA-Z0-9_]+)>\s*(\{[\s\S]*?\})\s*</[a-zA-Z0-9_]+>`),
+	regexp.MustCompile(`<function=([a-zA-Z0-9_]+)>\s*(\{[\s\S]*?\})`),
+	regexp.MustCompile(`([a-zA-Z0-9_]+)\s*\(\s*(\{[\s\S]*?\})\s*\)`),
+}
 
 func parseTextToolCall(content string) (types.ToolCall, bool) {
-	matches := textToolCallRegex.FindStringSubmatch(content)
-	if len(matches) >= 3 {
-		toolName := strings.TrimSpace(matches[1])
-		toolArgs := strings.TrimSpace(matches[2])
-		return types.ToolCall{
-			ID:        fmt.Sprintf("call_text_%d", time.Now().UnixNano()),
-			Name:      toolName,
-			Arguments: toolArgs,
-		}, true
+	for _, re := range textToolCallRegexes {
+		matches := re.FindStringSubmatch(content)
+		if len(matches) >= 3 {
+			toolName := strings.TrimSpace(matches[1])
+			toolArgs := strings.TrimSpace(matches[2])
+			// Normalize JSON arguments (fix double trailing braces like }})
+			if strings.HasSuffix(toolArgs, "}}") && !strings.HasSuffix(toolArgs, "}}}") {
+				toolArgs = strings.TrimSuffix(toolArgs, "}")
+			}
+			return types.ToolCall{
+				ID:        fmt.Sprintf("call_text_%d", time.Now().UnixNano()),
+				Name:      toolName,
+				Arguments: toolArgs,
+			}, true
+		}
 	}
 	return types.ToolCall{}, false
 }

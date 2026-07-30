@@ -16,6 +16,7 @@ import (
 	"github.com/heraji/jarvis/tools/apps"
 	"github.com/heraji/jarvis/tools/filesystem"
 	"github.com/heraji/jarvis/tools/terminal"
+	"github.com/heraji/jarvis/tools/web"
 	"github.com/heraji/jarvis/voice"
 )
 
@@ -87,6 +88,7 @@ func initAgent() (*core.Agent, *config.Config, error) {
 	registry.Register(termTool)
 	registry.Register(filesystem.New())
 	registry.Register(apps.New())
+	registry.Register(web.New())
 
 	agent := core.NewAgent(llmProvider, registry, cfg.SystemPrompt, cfg.MaxIterations)
 
