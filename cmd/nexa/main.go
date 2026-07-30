@@ -12,9 +12,11 @@ import (
 	"github.com/heraji/jarvis/config"
 	"github.com/heraji/jarvis/core"
 	"github.com/heraji/jarvis/llm"
+	"github.com/heraji/jarvis/memory"
 	"github.com/heraji/jarvis/tools"
 	"github.com/heraji/jarvis/tools/apps"
 	"github.com/heraji/jarvis/tools/filesystem"
+	memorytool "github.com/heraji/jarvis/tools/memory"
 	"github.com/heraji/jarvis/tools/terminal"
 	"github.com/heraji/jarvis/tools/web"
 	"github.com/heraji/jarvis/voice"
@@ -99,6 +101,8 @@ func initAgent() (*core.Agent, *config.Config, error) {
 		return nil, nil, fmt.Errorf("LLM error: %w", err)
 	}
 
+	memStore := memory.NewMemoryStore()
+
 	registry := tools.NewRegistry()
 
 	termTool := terminal.New()
@@ -114,8 +118,13 @@ func initAgent() (*core.Agent, *config.Config, error) {
 	registry.Register(filesystem.New())
 	registry.Register(apps.New())
 	registry.Register(web.New())
+	registry.Register(memorytool.New(memStore))
 
-	agent := core.NewAgent(llmProvider, registry, cfg.SystemPrompt, cfg.MaxIterations)
+	// Inject remembered facts into system prompt
+	rememberedFacts := memStore.FormatForSystemPrompt()
+	augmentedPrompt := cfg.SystemPrompt + fmt.Sprintf("\n\nREMEMBERED USER FACTS & PREFERENCES:\n%s", rememberedFacts)
+
+	agent := core.NewAgent(llmProvider, registry, augmentedPrompt, cfg.MaxIterations)
 
 	agent.OnToolCall = func(toolName string, args string) {
 		yellow.Printf("🔧 Using: %s\n", toolName)

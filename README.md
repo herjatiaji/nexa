@@ -5,11 +5,11 @@
 [![Python Version](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python)](https://python.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.style=flat-square)](LICENSE)
 
-**NEXA v1.0.0** is an ultra-fast, hands-free personal AI desktop assistant built in Go & Python. It features multi-LLM provider support (Groq, OpenAI, DeepSeek, OpenRouter, Gemini, Ollama), real-time neural wake word detection, OpenAI Whisper speech-to-text, Rhasspy Piper neural voice synthesis, live web searching, and deep Windows OS desktop automation into a seamless conversational agent.
+**NEXA v1.0.0** is an ultra-fast, hands-free personal AI desktop assistant built in Go & Python. It features multi-LLM provider support (Groq, OpenAI, DeepSeek, OpenRouter, Gemini, Ollama), real-time neural wake word detection, OpenAI Whisper speech-to-text, Rhasspy Piper neural voice synthesis, live web searching, persistent long-term memory, a 3-tier command risk analyzer, and deep Windows OS desktop automation into a seamless conversational agent.
 
 ---
 
-## ✨ Key Features & Versioning
+## ✨ Key Features
 
 - 🏷️ **Version 1.0.0 Release**  
   Full semantic versioning, CLI flags for runtime provider/model switching (`-p` / `--provider`, `-m` / `--model`), and version diagnostics (`nexa version`).
@@ -17,7 +17,7 @@
   Effortlessly switch between 6 major LLM providers:
   - ⚡ **Groq** (`llama-3.1-8b-instant`, `llama-3.3-70b-versatile`, `gemma2-9b-it`)
   - 🧠 **OpenAI** (`gpt-4o`, `gpt-4o-mini`, `o3-mini`)
-  - 🌐 **OpenRouter** (`meta-llama/llama-3.3-70b-instruct`, `anthropic/claude-3.5-sonnet`)
+  - 🌐 **OpenRouter** (`meta-llama/llama-3.3-70b-instruct`, `anthropic/claude-3.5-sonnet`, `deepseek/deepseek-r1`)
   - 🔬 **DeepSeek** (`deepseek-chat`, `deepseek-reasoner`)
   - ♊ **Google Gemini** (`gemini-2.0-flash`, `gemini-1.5-pro`)
   - 🦙 **Ollama (Local)** (`llama3.1`, `qwen2.5`, `mistral`)
@@ -27,14 +27,77 @@
   High-fidelity offline British female voice output using `en_GB-alba-medium.onnx` via Rhasspy Piper.
 - 💬 **Continuous Multi-Turn Follow-Up Mode**  
   After responding, NEXA automatically keeps listening for follow-up commands so you can have fluid, multi-step conversations without repeating the wake word.
+- 🧠 **Persistent Long-Term Memory Store (`nexa_memory.json`)**  
+  Remembers user preferences, project tech stacks (e.g., *"Main project: Kazeer, Backend: Go"*), and context across restarts using the `memory` tool (`store`, `get`, `list`, `delete`). Automatically injects remembered facts into the system prompt!
+- 🛡️ **3-Tier Command Risk Analyzer**  
+  Categorizes shell commands into:
+  - **`ALLOW`** (Safe read-only: `git status`, `dir`, `ls`, `ipconfig`) → Instant execution.
+  - **`CONFIRM`** (Medium/High risk: `rm`, `del`, `git push --force`) → Asks user confirmation.
+  - **`DENY`** (System wipe: `rm -rf /`, `format c:`, `diskpart`) → Blocked automatically.
 - 🌐 **Live Web Search & Weather Engine**  
   Real-time DuckDuckGo live web search and instant weather reporting via `wttr.in` for any location.
 - 📁 **Multi-Partition File System Access**  
-  Full access across `C:\`, `D:\`, `E:\`, and Windows user directories (`Documents`, `Downloads`, `Desktop`, `Pictures`, `Videos`).
+  Full access across `C:\`, `D:\`, `E:\`, and Windows user directories (`Documents`, `Downloads`, `Desktop`, `Pictures`, `Videos`) with safe permission handling.
+- ⚙️ **Multi-Format ReAct Tool Parser**  
+  Rock-solid tool parsing supporting JSON objects (`{"tool": ...}`), Markdown code blocks (```json ... ```), XML tags (`<desktop_apps>...</desktop_apps>`), and function signatures (`desktop_apps(...)`).
 
 ---
 
-## 🚀 Environment Configuration (`.env`)
+## 🏗️ System Architecture
+
+```
+                       ┌────────────────────────┐
+                       │   Microphone Input     │
+                       └───────────┬────────────┘
+                                   │
+                    ┌──────────────▼──────────────┐
+                    │  Python openWakeWord Engine │
+                    │     Trigger: "Hey Nexa"     │
+                    └──────────────┬──────────────┘
+                                   │
+                    ┌──────────────▼──────────────┐
+                    │  OpenAI Whisper STT (Groq)  │
+                    │   Converts speech to text   │
+                    └──────────────┬──────────────┘
+                                   │
+                    ┌──────────────▼──────────────┐
+                    │   ReAct AI Agent Loop (Go)  │
+                    │ Multi-LLM Provider Engine   │
+                    └──────┬───────────────┬──────┘
+                           │               │
+            ┌──────────────▼──────┐ ┌──────▼──────────────┐
+            │   Tool Executions   │ │  Piper Neural TTS   │
+            │ • desktop_apps      │ │  Voice Synthesis    │
+            │ • filesystem        │ └─────────────────────┘
+            │ • memory            │
+            │ • web               │
+            │ • run_command       │
+            └─────────────────────┘
+```
+
+---
+
+## 🛠️ Prerequisites
+
+1. **Go**: Version `1.20` or higher.
+2. **Python**: Version `3.10` or higher with required packages:
+   ```bash
+   pip install sounddevice numpy openwakeword onnxruntime
+   ```
+3. **API Key**: Groq (free), OpenAI, OpenRouter, DeepSeek, or Gemini API key.
+
+---
+
+## 🚀 Installation & Setup
+
+### 1. Clone Repository
+
+```bash
+git clone https://github.com/your-username/nexa.git
+cd nexa
+```
+
+### 2. Configure Environment (`.env`)
 
 Choose your preferred LLM provider in `.env`:
 
@@ -70,28 +133,6 @@ NEXA_OLLAMA_MODEL=llama3.1
 NEXA_ENABLE_TTS=true
 ```
 
----
-
-## 🎮 CLI Usage & Provider Override
-
-### Switch Providers & Models on the Fly
-
-Use `-p` (`--provider`) and `-m` (`--model`) flags to instantly switch models without editing `.env`:
-
-```powershell
-# Run with Groq 70B
-.\nexa.exe ask "Who won the F1 championship?" -p groq -m llama-3.3-70b-versatile
-
-# Run with OpenAI GPT-4o-mini
-.\nexa.exe ask "Summarize this file" -p openai -m gpt-4o-mini
-
-# Run with DeepSeek Chat
-.\nexa.exe ask "Explain quantum computing" -p deepseek -m deepseek-chat
-
-# Start Hands-Free Mode with OpenRouter
-.\nexa.exe listen -p openrouter -m meta-llama/llama-3.3-70b-instruct
-```
-
 ### 3. Build Executable
 
 ```bash
@@ -111,7 +152,7 @@ Start NEXA's persistent voice listening engine:
 ```
 
 - Say **"Hey Nexa"** or **"Nexa"** to activate.
-- Ask your command (e.g., *"Open Spotify"*, *"Check weather in London"*).
+- Ask your command (e.g., *"Open Spotify"*, *"Check weather in London"*, *"Remember my project is Kazeer"*).
 - NEXA will respond and immediately open a **continuous follow-up window** so you can speak your next command right away!
 
 ---
@@ -133,14 +174,35 @@ Runs an interactive colored REPL interface in PowerShell with text-to-speech out
 
 ---
 
+### ⚡ 4. Switch Providers & Models on the Fly
+
+Use `-p` (`--provider`) and `-m` (`--model`) flags to instantly switch models without editing `.env`:
+
+```powershell
+# Run with Groq 70B
+.\nexa.exe ask "Who won the F1 championship?" -p groq -m llama-3.3-70b-versatile
+
+# Run with OpenAI GPT-4o-mini
+.\nexa.exe ask "Summarize this file" -p openai -m gpt-4o-mini
+
+# Run with DeepSeek Chat
+.\nexa.exe ask "Explain quantum computing" -p deepseek -m deepseek-chat
+
+# Start Hands-Free Mode with OpenRouter
+.\nexa.exe listen -p openrouter -m meta-llama/llama-3.3-70b-instruct
+```
+
+---
+
 ## 🔧 Registered Tools & Capabilities
 
 | Tool | Actions | Description |
 |------|---------|-------------|
+| **`memory`** | `store`, `get`, `list`, `delete` | Long-term persistent memory store (`nexa_memory.json`). Remembers user preferences, project tech stacks, and context across sessions. |
+| **`run_command`** | `execute` | Safely execute PowerShell and CMD commands. Features a 3-tier Command Risk Analyzer (`ALLOW` for safe read-only commands, `CONFIRM` for modifications, `DENY` for system wipes). |
 | **`desktop_apps`** | `launch`, `close`, `list`, `focus` | Launch desktop apps, UWP store apps, File Explorer drives (`C:\`, `D:\`, `E:\`), close processes, list running windows. |
 | **`filesystem`** | `list_dir`, `read_file`, `write_file`, `append_file`, `copy`, `move`, `delete`, `search`, `find_files`, `get_info` | Complete file manager operations with automatic drive letter normalization (`D:` → `D:\`) and safe permission error handling. |
 | **`web`** | `search`, `fetch`, `weather` | Live web search via DuckDuckGo POST scraping, URL content extraction, and real-time weather reports via `wttr.in`. |
-| **`run_command`** | `execute` | Safely execute PowerShell and CMD commands with built-in interactive confirmation for system-altering commands. |
 
 ---
 
@@ -152,11 +214,13 @@ Runs an interactive colored REPL interface in PowerShell with text-to-speech out
 │   └── nexa/             # Main CLI application entry point (cobra commands)
 ├── config/               # Environment & system prompt configurations
 ├── core/                 # ReAct agent execution loop & hybrid tool parsers
-├── llm/                  # Groq API client with automatic rate-limit fallbacks
+├── llm/                  # Multi-LLM provider clients (Groq, OpenAI, OpenRouter, DeepSeek, Gemini, Ollama)
+├── memory/               # Persistent JSON memory store engine (`nexa_memory.json`)
 ├── tools/                # Extensible tool registry
 │   ├── apps/             # 5-Layer Windows application launcher & Explorer control
 │   ├── filesystem/       # Multi-drive file system manager
-│   ├── terminal/         # Safe PowerShell command execution tool
+│   ├── memory/           # Memory management tool (store, get, list, delete)
+│   ├── terminal/         # 3-Tier Command Risk Analyzer & PowerShell tool
 │   └── web/              # Live web search & weather tool
 ├── voice/                # Audio subsystem
 │   ├── openwakeword_listener.py  # Real-time ONNX wake word & VAD recorder

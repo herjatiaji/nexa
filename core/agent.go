@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
@@ -126,8 +127,16 @@ func (a *Agent) Reset() {
 }
 
 var textToolCallRegexes = []*regexp.Regexp{
+	// 1. Markdown code block or JSON tool_call: ```json {"tool": "desktop_apps", "arguments": {...}} ```
+	regexp.MustCompile("(?:```(?:json)?\\s*)?\\{\\s*\"tool\"\\s*:\\s*\"([a-zA-Z0-9_]+)\"\\s*,\\s*\"arguments\"\\s*:\\s*(\\{[\\s\\S]*?\\})\\s*\\}"),
+
+	// 2. XML tag format: <desktop_apps>{"action": "launch"}</desktop_apps>
 	regexp.MustCompile(`<([a-zA-Z0-9_]+)>\s*(\{[\s\S]*?\})\s*</[a-zA-Z0-9_]+>`),
-	regexp.MustCompile(`<function=([a-zA-Z0-9_]+)>\s*(\{[\s\S]*?\})`),
+
+	// 3. Function tag format: <function=desktop_apps>{"action": "launch"}</function>
+	regexp.MustCompile(`<function=([a-zA-Z0-9_]+)>\s*(\{[\s\S]*?\})(?:</function>)?`),
+
+	// 4. Function call syntax: desktop_apps({"action": "launch"})
 	regexp.MustCompile(`([a-zA-Z0-9_]+)\s*\(\s*(\{[\s\S]*?\})\s*\)`),
 }
 
@@ -137,15 +146,24 @@ func parseTextToolCall(content string) (types.ToolCall, bool) {
 		if len(matches) >= 3 {
 			toolName := strings.TrimSpace(matches[1])
 			toolArgs := strings.TrimSpace(matches[2])
-			// Normalize JSON arguments (fix double trailing braces like }})
+
+			// Clean up trailing brackets or markdown backticks if matched
+			toolArgs = strings.TrimSuffix(toolArgs, "```")
+			toolArgs = strings.TrimSpace(toolArgs)
+
 			if strings.HasSuffix(toolArgs, "}}") && !strings.HasSuffix(toolArgs, "}}}") {
 				toolArgs = strings.TrimSuffix(toolArgs, "}")
 			}
-			return types.ToolCall{
-				ID:        fmt.Sprintf("call_text_%d", time.Now().UnixNano()),
-				Name:      toolName,
-				Arguments: toolArgs,
-			}, true
+
+			// Validate JSON
+			var js map[string]interface{}
+			if json.Unmarshal([]byte(toolArgs), &js) == nil {
+				return types.ToolCall{
+					ID:        fmt.Sprintf("call_text_%d", time.Now().UnixNano()),
+					Name:      toolName,
+					Arguments: toolArgs,
+				}, true
+			}
 		}
 	}
 	return types.ToolCall{}, false

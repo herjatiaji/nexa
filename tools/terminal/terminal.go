@@ -10,28 +10,59 @@ import (
 	"time"
 )
 
-// dangerousPatterns contains command patterns that require user confirmation.
-var dangerousPatterns = []string{
-	"rm -rf",
-	"rm -r",
-	"rmdir",
-	"del /f",
-	"del /s",
-	"format",
-	"shutdown",
-	"reboot",
-	"mkfs",
-	"dd if=",
-	"> /dev/",
-	":(){ :|:& };:",
-	"reg delete",
-	"diskpart",
-}
+type RiskLevel int
+
+const (
+	RiskAllow RiskLevel = iota
+	RiskConfirm
+	RiskDeny
+)
+
+var (
+	// Critical destructive commands that are strictly FORBIDDEN (DENY)
+	denyPatterns = []string{
+		"rm -rf /",
+		"rm -rf c:",
+		"rm -rf c:\\",
+		"format c:",
+		"diskpart",
+		"rd /s /q c:",
+		"del /f /s /q c:",
+		":(){ :|:& };:",
+		"mkfs",
+		"dd if=",
+	}
+
+	// Medium/High risk commands that require user confirmation (CONFIRM)
+	confirmPatterns = []string{
+		"rm -rf",
+		"rm -r",
+		"rmdir",
+		"remove-item",
+		"del /f",
+		"del /s",
+		"format",
+		"shutdown",
+		"reboot",
+		"reg delete",
+		"stop-process",
+		"taskkill",
+		"git reset --hard",
+		"git push --force",
+	}
+
+	// Safe read-only commands that bypass confirmation (ALLOW)
+	allowPrefixes = []string{
+		"dir", "ls", "pwd", "cd", "echo", "whoami", "ipconfig", "ifconfig",
+		"git status", "git log", "git diff", "git branch", "git show",
+		"docker ps", "docker images", "node -v", "npm -v", "go version", "go env",
+		"get-childitem", "get-process", "get-service", "get-location",
+	}
+)
 
 // TerminalTool executes shell commands on the user's system.
 type TerminalTool struct {
 	// ConfirmFunc is called before executing dangerous commands.
-	// If nil, dangerous commands are blocked.
 	ConfirmFunc func(command string) bool
 }
 
@@ -45,9 +76,8 @@ func (t *TerminalTool) Name() string {
 }
 
 func (t *TerminalTool) Description() string {
-	return "Execute a shell command on the user's system and return the output. " +
-		"Use this to run programs, check system info, manage processes, or perform any terminal operation. " +
-		"The command runs in the system's default shell (PowerShell on Windows, bash on Linux/macOS)."
+	return "Execute a shell command on the user's system. " +
+		"Command Risk Analyzer categorizes commands into ALLOW (safe), CONFIRM (requires prompt), and DENY (blocked)."
 }
 
 func (t *TerminalTool) Parameters() map[string]interface{} {
@@ -60,7 +90,7 @@ func (t *TerminalTool) Parameters() map[string]interface{} {
 			},
 			"working_dir": map[string]interface{}{
 				"type":        "string",
-				"description": "Optional working directory for the command. Defaults to current directory.",
+				"description": "Optional working directory for the command.",
 			},
 		},
 		"required": []interface{}{"command"},
@@ -82,11 +112,19 @@ func (t *TerminalTool) Execute(input string) (string, error) {
 		return "", fmt.Errorf("command is required")
 	}
 
-	// Check for dangerous commands
-	if isDangerous(params.Command) {
+	// Analyze Command Risk
+	risk := analyzeRisk(params.Command)
+	switch risk {
+	case RiskDeny:
+		return fmt.Sprintf("⛔ Command DENIED: Execution of %q is blocked by Risk Analyzer for system protection.", params.Command), nil
+
+	case RiskConfirm:
 		if t.ConfirmFunc == nil || !t.ConfirmFunc(params.Command) {
-			return "⚠️ Command blocked: deemed potentially dangerous. User declined execution.", nil
+			return fmt.Sprintf("⚠️ Command CANCELLED: Execution of %q requires user confirmation.", params.Command), nil
 		}
+
+	case RiskAllow:
+		// Safe command, proceed directly
 	}
 
 	// Set up the command with a timeout
@@ -118,7 +156,6 @@ func (t *TerminalTool) Execute(input string) (string, error) {
 		if ctx.Err() == context.DeadlineExceeded {
 			return fmt.Sprintf("Command timed out after 30 seconds.\nPartial output:\n%s", result), nil
 		}
-		// Return output even on error (e.g., non-zero exit code)
 		if result != "" {
 			return fmt.Sprintf("Command exited with error: %v\nOutput:\n%s", err, result), nil
 		}
@@ -132,13 +169,31 @@ func (t *TerminalTool) Execute(input string) (string, error) {
 	return result, nil
 }
 
-// isDangerous checks if a command matches any dangerous patterns.
-func isDangerous(command string) bool {
-	lower := strings.ToLower(command)
-	for _, pattern := range dangerousPatterns {
+// analyzeRisk categorizes shell commands into RiskAllow, RiskConfirm, or RiskDeny.
+func analyzeRisk(command string) RiskLevel {
+	lower := strings.TrimSpace(strings.ToLower(command))
+
+	// 1. Check DENY list
+	for _, pattern := range denyPatterns {
 		if strings.Contains(lower, pattern) {
-			return true
+			return RiskDeny
 		}
 	}
-	return false
+
+	// 2. Check ALLOW list
+	for _, prefix := range allowPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return RiskAllow
+		}
+	}
+
+	// 3. Check CONFIRM list
+	for _, pattern := range confirmPatterns {
+		if strings.Contains(lower, pattern) {
+			return RiskConfirm
+		}
+	}
+
+	// Default to RiskConfirm for unknown write/exec commands
+	return RiskConfirm
 }
