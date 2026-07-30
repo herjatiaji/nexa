@@ -104,7 +104,7 @@ $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine($culture)
 $engine.SetInputToDefaultAudioDevice()
 
 $choices = New-Object System.Speech.Recognition.Choices
-$choices.Add(@("Jarvis", "Hey Jarvis", "Hello Jarvis", "Friday", "Hey Friday", "Hello Friday", "Computer"))
+$choices.Add(@("Friday", "Hey Friday", "Hello Friday", "Hi Friday", "Yo Friday"))
 $gb = New-Object System.Speech.Recognition.GrammarBuilder
 $gb.Append($choices)
 $grammar = New-Object System.Speech.Recognition.Grammar($gb)

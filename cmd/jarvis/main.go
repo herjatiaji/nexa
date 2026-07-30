@@ -278,6 +278,7 @@ func listenCmd() *cobra.Command {
 			green.Println("✅ Persistent speech engine is running!")
 			ttsEngine.SpeakAsync("Friday voice activation online. At your service, sir.")
 			fmt.Println()
+			yellow.Println("👂 Listening for wake word ('Hey Friday')...")
 
 			for {
 				result, ok := <-resultChan
@@ -294,8 +295,6 @@ func listenCmd() *cobra.Command {
 					}
 
 					green.Printf("⚡ Wake word detected: \"%s\" — FRIDAY activated!\n", wakeWord)
-
-					// Prompt user with Piper Neural TTS while Python records next 4s of audio
 					ttsEngine.SpeakAsync("Yes, sir?")
 					cyan.Println("🎙️  Listening for command (OpenAI Whisper Large v3 STT)...")
 
@@ -308,8 +307,13 @@ func listenCmd() *cobra.Command {
 					_ = os.Remove(wavFile)
 
 					userCommand = strings.TrimSpace(userCommand)
-					if err != nil || userCommand == "" {
-						dim.Println("Didn't catch that. Say 'Hey Friday' or 'Jarvis' to try again.")
+					cleanCmd := strings.Trim(userCommand, ".?!, ")
+					cleanLower := strings.ToLower(cleanCmd)
+
+					// Filter empty transcripts, punctuation, or generic silence hallucinations
+					if err != nil || cleanCmd == "" || cleanLower == "thank you" || cleanLower == "thanks" || cleanLower == "thanks for watching" || cleanLower == "you" {
+						dim.Println("   (silence / no command detected)")
+						_ = voice.SendListenCommand("RESUME")
 						continue
 					}
 
@@ -327,6 +331,7 @@ func listenCmd() *cobra.Command {
 					response, err := agent.Run(userCommand)
 					if err != nil {
 						red.Printf("❌ Error: %v\n\n", err)
+						_ = voice.SendListenCommand("RESUME")
 						continue
 					}
 
@@ -335,7 +340,12 @@ func listenCmd() *cobra.Command {
 					fmt.Println(response)
 					fmt.Println()
 
+					// Speak response fully
 					ttsEngine.Speak(response)
+
+					// Resume openWakeWord engine after TTS finishes speaking
+					_ = voice.SendListenCommand("RESUME")
+					yellow.Println("👂 Listening for wake word ('Hey Friday')...")
 				}
 			}
 
