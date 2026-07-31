@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/heraji/jarvis/brain"
 	"github.com/heraji/jarvis/config"
 	"github.com/heraji/jarvis/core"
 	"github.com/heraji/jarvis/events"
@@ -54,6 +55,7 @@ type App struct {
 	eventBus        *events.EventBus
 	desktopObserver *observer.DesktopObserver
 	awareness       *observer.AwarenessManager
+	brainKernel     *brain.Brain
 }
 
 // NewApp creates a new App instance with the NEXA agent, config, and memory store.
@@ -63,6 +65,7 @@ func NewApp(agent *core.Agent, cfg *config.Config, memStore *memory.MemoryStore)
 	eb := events.NewEventBus()
 	obs := observer.NewDesktopObserver(eb)
 	aw := observer.NewAwarenessManager(eb)
+	bk := brain.NewBrain(eb)
 
 	app := &App{
 		agent:           agent,
@@ -73,6 +76,7 @@ func NewApp(agent *core.Agent, cfg *config.Config, memStore *memory.MemoryStore)
 		eventBus:        eb,
 		desktopObserver: obs,
 		awareness:       aw,
+		brainKernel:     bk,
 	}
 
 	// Forward all EventBus events to Wails frontend
@@ -90,6 +94,9 @@ func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	if a.desktopObserver != nil {
 		a.desktopObserver.Start()
+	}
+	if a.brainKernel != nil {
+		a.brainKernel.Start(ctx)
 	}
 }
 
