@@ -46,12 +46,27 @@ func (t *TTS) Speak(text string) error {
 		return nil
 	}
 
-	// 1. Try Piper TTS first if available
+	// 1. Try VOICEVOX engine if local server is running (Japanese / Anime character voice)
+	vvClient := NewVoicevoxClient("http://localhost:50021", 3)
+	if vvClient.IsAvailable() {
+		if wavFile, err := vvClient.SynthesizeSpeech(cleanText); err == nil {
+			defer os.Remove(wavFile)
+			if runtime.GOOS == "windows" {
+				psPlay := fmt.Sprintf("(New-Object System.Media.SoundPlayer '%s').PlaySync()", strings.ReplaceAll(wavFile, "'", "''"))
+				playCmd := exec.Command("powershell", "-NoProfile", "-Command", psPlay)
+				if err := playCmd.Run(); err == nil {
+					return nil
+				}
+			}
+		}
+	}
+
+	// 2. Try Piper TTS (Amy cheerful voice)
 	if err := t.speakPiper(cleanText); err == nil {
 		return nil
 	}
 
-	// 2. Fallback to Windows System.Speech (SAPI5)
+	// 3. Fallback to Windows System.Speech (SAPI5)
 	if runtime.GOOS == "windows" {
 		return t.speakWindows(cleanText)
 	}
@@ -99,13 +114,20 @@ func findPiperLocation() (string, string) {
 
 	piperDir := filepath.Dir(piperExe)
 	modelFile := ""
-	_ = filepath.Walk(piperDir, func(path string, info os.FileInfo, err error) error {
-		if err == nil && !info.IsDir() && strings.HasSuffix(path, ".onnx") && !strings.Contains(path, "libtashkeel") {
-			modelFile = path
-			return filepath.SkipAll
-		}
-		return nil
-	})
+	
+	// Check specifically for cheerful Amy voice model first
+	amyPath := filepath.Join(piperDir, "en_US-amy-medium.onnx")
+	if _, err := os.Stat(amyPath); err == nil {
+		modelFile = amyPath
+	} else {
+		_ = filepath.Walk(piperDir, func(path string, info os.FileInfo, err error) error {
+			if err == nil && !info.IsDir() && strings.HasSuffix(path, ".onnx") && !strings.Contains(path, "libtashkeel") {
+				modelFile = path
+				return filepath.SkipAll
+			}
+			return nil
+		})
+	}
 
 	return piperExe, modelFile
 }
