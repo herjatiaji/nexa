@@ -17,19 +17,24 @@ type LLM interface {
 	Chat(messages []types.Message, toolDefs []types.ToolDefinition) (*types.ChatResponse, error)
 }
 
-// Agent orchestrates the ReAct (Reason + Act) loop.
+// Agent orchestrates the ReAct (Reason + Act) loop with Tracing and Task Planning.
 type Agent struct {
 	llm           LLM
 	tools         *tools.Registry
 	history       []types.Message
 	systemPrompt  string
 	maxIterations int
+	tracer        *TraceRecorder
+	planner       *Planner
 
 	// OnToolCall is called when the agent invokes a tool (for UI feedback).
 	OnToolCall func(toolName string, args string)
 
 	// OnToolResult is called when a tool returns a result (for UI feedback).
 	OnToolResult func(toolName string, result string)
+
+	// OnTrace is called when a new trace step is recorded.
+	OnTrace func(step TraceStep)
 }
 
 // NewAgent creates a new Agent with the given LLM and tool registry.
@@ -43,6 +48,8 @@ func NewAgent(llm LLM, registry *tools.Registry, systemPrompt string, maxIterati
 		tools:         registry,
 		systemPrompt:  fullPrompt,
 		maxIterations: maxIterations,
+		tracer:        NewTraceRecorder(),
+		planner:       NewPlanner(llm),
 	}
 
 	// Initialize history with system prompt
@@ -51,6 +58,16 @@ func NewAgent(llm LLM, registry *tools.Registry, systemPrompt string, maxIterati
 	}
 
 	return agent
+}
+
+// GetTraces returns all recorded trace steps.
+func (a *Agent) GetTraces() []TraceStep {
+	return a.tracer.GetSteps()
+}
+
+// CreatePlan decomposes a multi-step user prompt into a task plan.
+func (a *Agent) CreatePlan(prompt string) (*Plan, error) {
+	return a.planner.CreatePlan(prompt)
 }
 
 // Run processes a user input through the ReAct loop and returns the final response.
@@ -81,6 +98,17 @@ func (a *Agent) Run(userInput string) (string, error) {
 					Role:    "assistant",
 					Content: resp.Content,
 				})
+
+				// Record final reasoning trace
+				step := TraceStep{
+					Thought:  resp.Content,
+					Response: resp.Content,
+				}
+				a.tracer.AddStep(step)
+				if a.OnTrace != nil {
+					a.OnTrace(step)
+				}
+
 				return resp.Content, nil
 			}
 		}
@@ -105,6 +133,18 @@ func (a *Agent) Run(userInput string) (string, error) {
 
 			if a.OnToolResult != nil {
 				a.OnToolResult(tc.Name, result)
+			}
+
+			// Record tool trace step
+			traceStep := TraceStep{
+				Thought:   resp.Content,
+				Tool:      tc.Name,
+				Arguments: tc.Arguments,
+				Result:    result,
+			}
+			a.tracer.AddStep(traceStep)
+			if a.OnTrace != nil {
+				a.OnTrace(traceStep)
 			}
 
 			a.history = append(a.history, types.Message{

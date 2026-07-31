@@ -202,6 +202,21 @@ func (a *App) listenVoiceLoop(resultChan <-chan string) {
 	}
 }
 
+// GetTraces returns all recorded agent reasoning trace steps.
+func (a *App) GetTraces() []core.TraceStep {
+	return a.agent.GetTraces()
+}
+
+// CreatePlan decomposes a multi-step user goal into structured sub-tasks.
+func (a *App) CreatePlan(prompt string) (*core.Plan, error) {
+	return a.agent.CreatePlan(prompt)
+}
+
+// SearchMemories performs semantic concept matching over memories.
+func (a *App) SearchMemories(query string) []memory.SemanticMatch {
+	return a.memStore.SearchSemantic(query)
+}
+
 // GetMemories returns all stored long-term memories.
 func (a *App) GetMemories() map[string]string {
 	return a.memStore.List()
@@ -232,7 +247,7 @@ func (a *App) GetStatus() StatusInfo {
 		Model:       model,
 		TTS:         a.cfg.EnableTTS,
 		VoiceActive: a.voiceActive,
-		Version:     "1.2.0",
+		Version:     "1.3.0",
 	}
 }
 
