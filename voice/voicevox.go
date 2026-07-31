@@ -52,14 +52,14 @@ func NewVoicevoxClient(baseURL string, speaker int) *VoicevoxClient {
 	}
 
 	if speaker <= 0 && client.IsAvailable() {
-		// Auto-discover Zundamon or first available speaker ID
-		if id, err := client.FindSpeakerID("ずんだもん", "ノーマル"); err == nil {
+		// Auto-discover Shikoku Metan (mature female character voice)
+		if id, err := client.FindSpeakerID("四国めたん", "ノーマル"); err == nil {
 			client.Speaker = id
 		} else {
-			client.Speaker = 3 // Fallback to Zundamon default ID
+			client.Speaker = 2 // Fallback to Shikoku Metan Normal default ID
 		}
 	} else if speaker <= 0 {
-		client.Speaker = 3
+		client.Speaker = 2
 	}
 
 	return client

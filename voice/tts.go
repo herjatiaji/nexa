@@ -47,7 +47,7 @@ func (t *TTS) SpeakWithEmotion(payload EmotionPayload) error {
 	defer t.mu.Unlock()
 
 	// 1. Phase 1: Try VOICEVOX local REST engine (http://localhost:50021)
-	vvClient := NewVoicevoxClient("http://localhost:50021", 3) // 3: Zundamon
+	vvClient := NewVoicevoxClient("http://localhost:50021", 2) // 2: Shikoku Metan (Mature Adult Female)
 	if vvClient.IsAvailable() {
 		vvPayload := payload
 		vvPayload.Text = sanitizeTextForVoicevox(payload.Text)
