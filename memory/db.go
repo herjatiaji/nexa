@@ -71,6 +71,33 @@ func (s *DBStore) initTables() error {
 		tool_calls TEXT,
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
+
+	CREATE TABLE IF NOT EXISTS brain_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+		type TEXT NOT NULL,
+		source TEXT,
+		priority INTEGER DEFAULT 5,
+		payload TEXT
+	);
+
+	CREATE TABLE IF NOT EXISTS cognitive_traces (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		cycle_id TEXT NOT NULL,
+		stage TEXT NOT NULL,
+		component TEXT NOT NULL,
+		input TEXT,
+		output TEXT,
+		duration_ms INTEGER DEFAULT 0,
+		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS brain_snapshots (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		cycle_id TEXT NOT NULL,
+		state TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
 	`
 	_, err := s.db.Exec(query)
 	return err

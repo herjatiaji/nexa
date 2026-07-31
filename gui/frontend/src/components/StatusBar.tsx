@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { StatusInfo } from '../wails.d';
 import TraceInspector from './TraceInspector';
 import PermissionsModal from './PermissionsModal';
+import BrainInspector from './BrainInspector';
 
 export default function StatusBar() {
   const [status, setStatus] = useState<StatusInfo | null>(null);
@@ -20,6 +21,7 @@ export default function StatusBar() {
 
   return (
     <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <BrainInspector />
       <PermissionsModal />
       <TraceInspector />
       <span className="provider-tag">

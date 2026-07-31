@@ -50,6 +50,7 @@ type EventHandler func(event Event)
 // EventBus provides thread-safe in-process event publish/subscribe capability.
 type EventBus struct {
 	subscribers map[EventType][]EventHandler
+	middlewares []EventMiddleware
 	mu          sync.RWMutex
 }
 
@@ -57,7 +58,15 @@ type EventBus struct {
 func NewEventBus() *EventBus {
 	return &EventBus{
 		subscribers: make(map[EventType][]EventHandler),
+		middlewares: make([]EventMiddleware, 0),
 	}
+}
+
+// Use attaches a middleware to intercept published events.
+func (eb *EventBus) Use(m EventMiddleware) {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+	eb.middlewares = append(eb.middlewares, m)
 }
 
 // Subscribe registers a callback function for a specific event type.
@@ -74,6 +83,8 @@ func (eb *EventBus) Publish(event Event) {
 		event.Timestamp = time.Now().Format("15:04:05")
 	}
 
+	start := time.Now()
+
 	eb.mu.RLock()
 	handlers := make([]EventHandler, len(eb.subscribers[event.Type]))
 	copy(handlers, eb.subscribers[event.Type])
@@ -81,7 +92,14 @@ func (eb *EventBus) Publish(event Event) {
 	// Also get wildcard subscribers (subscribed to "*")
 	wildcardHandlers := make([]EventHandler, len(eb.subscribers["*"]))
 	copy(wildcardHandlers, eb.subscribers["*"])
+
+	mws := make([]EventMiddleware, len(eb.middlewares))
+	copy(mws, eb.middlewares)
 	eb.mu.RUnlock()
+
+	for _, m := range mws {
+		m.Before(&event)
+	}
 
 	// Execute handlers asynchronously to prevent blocking the publisher
 	go func() {
@@ -90,6 +108,10 @@ func (eb *EventBus) Publish(event Event) {
 		}
 		for _, h := range wildcardHandlers {
 			h(event)
+		}
+		dur := time.Since(start)
+		for _, m := range mws {
+			m.After(&event, dur)
 		}
 	}()
 }

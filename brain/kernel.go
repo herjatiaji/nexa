@@ -2,14 +2,18 @@ package brain
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/heraji/jarvis/autonomy"
 	"github.com/heraji/jarvis/cognitive"
+	"github.com/heraji/jarvis/cognitive/explain"
+	"github.com/heraji/jarvis/cognitive/trace"
 	"github.com/heraji/jarvis/events"
 	"github.com/heraji/jarvis/goals"
 	"github.com/heraji/jarvis/perception"
+	"github.com/heraji/jarvis/runtime"
 )
 
 // Brain orchestrates the Cognitive Cycle (Perceive -> Reduce -> Observe -> Think -> Arbitrate -> Dispatch).
@@ -27,6 +31,13 @@ type Brain struct {
 	autonomyCtrl *autonomy.AutonomyController
 	goalMgr      *goals.GoalManager
 	dispatcher   *cognitive.IntentDispatcher
+	traceStore   *trace.TraceStore
+	profiler     *TickProfiler
+	snapStore    *SnapshotStore
+	explainer    *explain.DecisionExplainer
+	metrics      *runtime.BrainMetricsManager
+	lastExpl     explain.DecisionExplanation
+	policyEngine *cognitive.PolicyEngine
 	cancel       context.CancelFunc
 	mu           sync.RWMutex
 }
@@ -37,6 +48,12 @@ func NewBrain(bus *events.EventBus) *Brain {
 	goalMgr := goals.NewGoalManager()
 	history := events.NewEventHistory(100)
 	pq := events.NewPriorityQueue(200)
+	trStore := trace.NewTraceStore(200)
+	profiler := NewTickProfiler(100)
+	snapStore := NewSnapshotStore(50)
+	explainer := explain.NewDecisionExplainer()
+	metrics := runtime.NewBrainMetricsManager()
+	policyEng := cognitive.NewPolicyEngine()
 
 	b := &Brain{
 		state:        NewBrainState(),
@@ -52,6 +69,12 @@ func NewBrain(bus *events.EventBus) *Brain {
 		autonomyCtrl: autonomyCtrl,
 		goalMgr:      goalMgr,
 		dispatcher:   cognitive.NewIntentDispatcher(bus),
+		traceStore:   trStore,
+		profiler:     profiler,
+		snapStore:    snapStore,
+		explainer:    explainer,
+		metrics:      metrics,
+		policyEngine: policyEng,
 	}
 
 	// Register default perceivers
@@ -113,6 +136,35 @@ func (b *Brain) Snapshot() BrainSnapshot {
 	return b.state.Snapshot()
 }
 
+// GetTraces returns recent cognitive traces for dashboard visualization.
+func (b *Brain) GetTraces(limit int) []trace.CognitiveTrace {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.traceStore.Recent(limit)
+}
+
+// GetMetrics returns real-time cognitive performance telemetry.
+func (b *Brain) GetMetrics() runtime.BrainMetricsTelemetry {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	avgLatency := b.profiler.AverageLatency()
+	return b.metrics.GetTelemetry(avgLatency)
+}
+
+// ExplainLastDecision returns human-readable natural language explanation of latest decision.
+func (b *Brain) ExplainLastDecision() explain.DecisionExplanation {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.lastExpl
+}
+
+// GetPersistedSnapshot retrieves a saved snapshot by cycle ID.
+func (b *Brain) GetPersistedSnapshot(cycleID string) (PersistedSnapshot, bool) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.snapStore.Get(cycleID)
+}
+
 func (b *Brain) runLoop(ctx context.Context) {
 	for {
 		snapshot := b.Snapshot()
@@ -131,10 +183,14 @@ func (b *Brain) tick() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	tickStart := time.Now()
+	cycleID := fmt.Sprintf("cycle_%d", b.state.CycleCount+1)
+
 	// 1. Drain priority queue
 	priorityEvents := b.pq.Drain()
 
 	// 2. Perception Pipeline: Convert raw events -> Percepts
+	perceiveSpan := trace.StartSpan(b.traceStore, cycleID, trace.StagePerceive, "perception_pipeline", map[string]int{"events": len(priorityEvents)})
 	var rawPercepts []perception.Percept
 	for _, pe := range priorityEvents {
 		for _, p := range b.perceivers {
@@ -146,6 +202,8 @@ func (b *Brain) tick() {
 
 	// 3. Fusion Engine: Fuse multi-source percepts
 	fused := b.fusion.Fuse(rawPercepts)
+	perceiveSpan.End(fused)
+	perceiveDuration := time.Since(tickStart)
 
 	// 4. Reduce percepts into BrainState
 	b.reducer.Reduce(&b.state, []StateAction{
@@ -157,26 +215,93 @@ func (b *Brain) tick() {
 	snapshot := b.state.Snapshot()
 
 	// 6. Observe Phase: Modules read state
+	observeStart := time.Now()
 	for _, m := range b.modules {
 		m.Observe(snapshot)
 	}
 
 	// 7. Think Phase: Modules propose StateActions
+	thinkSpan := trace.StartSpan(b.traceStore, cycleID, trace.StageThink, "cognitive_modules", map[string]int{"modules": len(b.modules)})
 	var proposedActions []StateAction
 	for _, m := range b.modules {
 		actions := m.Think(snapshot)
 		proposedActions = append(proposedActions, actions...)
 	}
 
+	// Evaluate policy rules
+	ruleResults := b.policyEngine.EvaluateAll(b.state.Context, b.state.WorkingMemory)
+	thinkSpan.End(ruleResults)
+	thinkDuration := time.Since(observeStart)
+
 	// 8. Reduce module actions into state
 	b.reducer.Reduce(&b.state, proposedActions)
 
-	// 9. Dispatch pending intent if approved
+	// 9. Arbitrate & Decide
+	decideStart := time.Now()
+	var candidates []Decision
+	for _, rr := range ruleResults {
+		candidates = append(candidates, Decision{
+			Action:     rr.Action,
+			Confidence: rr.Confidence,
+			Reason:     rr.Reason,
+			RuleName:   rr.RuleName,
+			Payload:    rr.Payload,
+		})
+	}
+	winningDecision := b.arbiter.Select(candidates, b.state.Social, b.autonomyCtrl)
+	decideDuration := time.Since(decideStart)
+
+	winningAction := "SILENT"
+	winningConf := 0.0
+	if winningDecision != nil {
+		winningAction = winningDecision.Action
+		winningConf = winningDecision.Confidence
+		b.reducer.Reduce(&b.state, []StateAction{
+			{Type: "propose_intent", Data: &cognitive.CognitiveIntent{
+				Type:     winningDecision.Action,
+				Content:  winningDecision.Reason,
+				Priority: 5,
+				Source:   winningDecision.RuleName,
+				Payload:  winningDecision.Payload,
+			}},
+		})
+	}
+
+	// Generate decision explanation
+	b.lastExpl = b.explainer.Explain(
+		b.state.Context,
+		b.state.Social,
+		b.state.Autonomy,
+		ruleResults,
+		winningAction,
+		winningConf,
+	)
+
+	// 10. Dispatch pending intent if approved
 	if b.state.PendingIntent != nil {
+		execSpan := trace.StartSpan(b.traceStore, cycleID, trace.StageExecute, "intent_dispatcher", b.state.PendingIntent)
 		b.dispatcher.Dispatch(b.state.PendingIntent)
 		b.autonomyCtrl.RecordAction(b.state.PendingIntent.Type)
 		b.reducer.Reduce(&b.state, []StateAction{{Type: "clear_intent"}})
+		execSpan.End("dispatched")
 	}
+
+	// Record cycle metrics & snapshot
+	totalDuration := time.Since(tickStart)
+	b.profiler.Record(CycleMetrics{
+		CycleID:            cycleID,
+		TotalDuration:      totalDuration,
+		PerceptionDuration: perceiveDuration,
+		ThinkingDuration:   thinkDuration,
+		DecisionDuration:   decideDuration,
+		EventsProcessed:    len(priorityEvents),
+		ModulesExecuted:    len(b.modules),
+		Timestamp:          tickStart,
+	})
+
+	b.snapStore.Save(cycleID, b.state.Snapshot())
+	b.metrics.RecordCycle()
+	b.metrics.RecordDecision(winningAction)
 
 	b.state.CycleCount++
 }

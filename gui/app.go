@@ -8,11 +8,14 @@ import (
 	"sync"
 
 	"github.com/heraji/jarvis/brain"
+	"github.com/heraji/jarvis/cognitive/explain"
+	"github.com/heraji/jarvis/cognitive/trace"
 	"github.com/heraji/jarvis/config"
 	"github.com/heraji/jarvis/core"
 	"github.com/heraji/jarvis/events"
 	"github.com/heraji/jarvis/memory"
 	"github.com/heraji/jarvis/observer"
+	runtimepkg "github.com/heraji/jarvis/runtime"
 	"github.com/heraji/jarvis/security"
 	"github.com/heraji/jarvis/voice"
 	"github.com/heraji/jarvis/voice/speech"
@@ -360,4 +363,39 @@ func (a *App) ResetConversation() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.agent.Reset()
+}
+
+// GetBrainState returns a snapshot of current brain state.
+func (a *App) GetBrainState() brain.BrainSnapshot {
+	if a.brainKernel == nil {
+		return brain.BrainSnapshot{}
+	}
+	return a.brainKernel.Snapshot()
+}
+
+// GetCognitiveTraces returns recent reasoning and perception traces.
+func (a *App) GetCognitiveTraces(limit int) []trace.CognitiveTrace {
+	if a.brainKernel == nil {
+		return nil
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	return a.brainKernel.GetTraces(limit)
+}
+
+// GetBrainMetrics returns system-wide cognitive performance metrics.
+func (a *App) GetBrainMetrics() runtimepkg.BrainMetricsTelemetry {
+	if a.brainKernel == nil {
+		return runtimepkg.BrainMetricsTelemetry{}
+	}
+	return a.brainKernel.GetMetrics()
+}
+
+// ExplainLastDecision returns human-readable natural language explanation of the latest decision.
+func (a *App) ExplainLastDecision() explain.DecisionExplanation {
+	if a.brainKernel == nil {
+		return explain.DecisionExplanation{}
+	}
+	return a.brainKernel.ExplainLastDecision()
 }
