@@ -9,12 +9,14 @@ import (
 )
 
 var (
-	user32           = syscall.NewLazyDLL("user32.dll")
-	shell32          = syscall.NewLazyDLL("shell32.dll")
-	pRegisterHotKey  = user32.NewProc("RegisterHotKey")
-	pGetMessageW     = user32.NewProc("GetMessageW")
-	pShowWindow      = user32.NewProc("ShowWindow")
+	user32               = syscall.NewLazyDLL("user32.dll")
+	kernel32             = syscall.NewLazyDLL("kernel32.dll")
+	shell32              = syscall.NewLazyDLL("shell32.dll")
+	pRegisterHotKey      = user32.NewProc("RegisterHotKey")
+	pGetMessageW         = user32.NewProc("GetMessageW")
+	pShowWindow          = user32.NewProc("ShowWindow")
 	pSetForegroundWindow = user32.NewProc("SetForegroundWindow")
+	pGetModuleHandleW    = kernel32.NewProc("GetModuleHandleW")
 
 	// Shell_NotifyIconW for system tray
 	pShellNotifyIconW = shell32.NewProc("Shell_NotifyIconW")
@@ -94,8 +96,6 @@ func (a *App) toggleWindow() {
 
 // AddTrayIcon adds a basic system tray icon using Shell_NotifyIconW.
 func (a *App) AddTrayIcon() {
-	pGetModuleHandleW := user32.NewProc("GetModuleHandleW")
-
 	go func() {
 		// Load NEXA's embedded EXE icon handle from current process instance
 		hInstance, _, _ := pGetModuleHandleW.Call(0)
