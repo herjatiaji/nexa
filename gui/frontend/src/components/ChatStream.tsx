@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import type { ChatResult } from '../wails.d';
 
 interface ToolCall {
   name: string;
@@ -9,6 +10,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   toolCalls?: ToolCall[];
+  source?: 'text' | 'voice';
 }
 
 export default function ChatStream() {
@@ -26,13 +28,40 @@ export default function ChatStream() {
     }
   }, [messages, loading]);
 
+  useEffect(() => {
+    if (window.runtime) {
+      const cancelCmd = window.runtime.EventsOn('nexa:voice:command', (cmd: string) => {
+        setLoading(true);
+        setMessages(prev => [...prev, { role: 'user', content: cmd, source: 'voice' }]);
+      });
+
+      const cancelRes = window.runtime.EventsOn('nexa:voice:result', (result: ChatResult) => {
+        setLoading(false);
+        setMessages(prev => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: result.response,
+            toolCalls: result.toolCalls,
+            source: 'voice'
+          }
+        ]);
+      });
+
+      return () => {
+        if (cancelCmd) cancelCmd();
+        if (cancelRes) cancelRes();
+      };
+    }
+  }, []);
+
   const sendMessage = async () => {
     const val = input.trim();
     if (!val || loading) return;
 
     setInput('');
     setLoading(true);
-    setMessages(prev => [...prev, { role: 'user', content: val }]);
+    setMessages(prev => [...prev, { role: 'user', content: val, source: 'text' }]);
 
     try {
       const result = await window.go.gui.App.Chat(val);
@@ -42,6 +71,7 @@ export default function ChatStream() {
           role: 'assistant',
           content: result.response,
           toolCalls: result.toolCalls,
+          source: 'text'
         }
       ]);
     } catch (err: any) {
@@ -86,7 +116,9 @@ export default function ChatStream() {
                 .replace(/>/g, '&gt;')
                 .replace(/\n/g, '<br/>')
             }} />
-            <div className="msg-meta">{msg.role === 'user' ? 'You' : 'NEXA Engine'}</div>
+            <div className="msg-meta">
+              {msg.role === 'user' ? (msg.source === 'voice' ? '🎙️ You (Voice)' : 'You') : 'NEXA Engine'}
+            </div>
           </div>
         ))}
         {loading && (
