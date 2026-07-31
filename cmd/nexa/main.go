@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/fatih/color"
@@ -11,9 +12,11 @@ import (
 
 	"github.com/heraji/jarvis/config"
 	"github.com/heraji/jarvis/core"
+	"github.com/heraji/jarvis/events"
 	"github.com/heraji/jarvis/gui"
 	"github.com/heraji/jarvis/llm"
 	"github.com/heraji/jarvis/memory"
+	"github.com/heraji/jarvis/observer"
 	"github.com/heraji/jarvis/plugins/docker"
 	"github.com/heraji/jarvis/tools"
 	"github.com/heraji/jarvis/tools/apps"
@@ -59,6 +62,10 @@ executes tool calls, manages files, searches the live web, and automates Windows
 	rootCmd.AddCommand(askCmd())
 	rootCmd.AddCommand(listenCmd())
 	rootCmd.AddCommand(guiCmd())
+	rootCmd.AddCommand(daemonCmd())
+	rootCmd.AddCommand(avatarCmd())
+	rootCmd.AddCommand(dashboardCmd())
+	rootCmd.AddCommand(autostartCmd())
 	rootCmd.AddCommand(voiceCmd())
 	rootCmd.AddCommand(versionCmd())
 
@@ -529,14 +536,103 @@ func voiceCmd() *cobra.Command {
 func guiCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "gui",
-		Short: "Launch NEXA native desktop application",
+		Short: "Launch NEXA native desktop companion (daemon + floating avatar)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			agent, cfg, memStore, err := initAgent()
 			if err != nil {
 				return err
 			}
-			cyan.Println("🚀 Launching NEXA Desktop...")
+			cyan.Println("🚀 Launching NEXA Desktop Companion...")
+			return gui.LaunchAvatarApp(gui.NewApp(agent, cfg, memStore))
+		},
+	}
+}
+
+func daemonCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "daemon",
+		Short: "Start NEXA headless background runtime service (voice, memory, agent, observer, IPC)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, _, _, err := initAgent()
+			if err != nil {
+				return err
+			}
+			cyan.Println("⚙️ Starting NEXA Background Daemon Service...")
+
+			bus := events.NewEventBus()
+			pipeServer := events.NewPipeServer(bus)
+			if err := pipeServer.Start(); err != nil {
+				yellow.Printf("⚠️ IPC pipe warning: %v\n", err)
+			}
+			defer pipeServer.Stop()
+
+			obs := observer.NewDesktopObserver(bus)
+			obs.Start()
+			defer obs.Stop()
+
+			awareness := observer.NewAwarenessManager(bus)
+			visionLoop := observer.NewIntelligentVisionLoop(bus, awareness)
+			visionLoop.Start()
+			defer visionLoop.Stop()
+
+			green.Println("✅ NEXA Background Daemon is running! (IPC on 127.0.0.1:59123)")
+			dim.Println("   Listening for voice, active desktop windows, and avatar UI connections...")
+
+			select {} // Block forever in background
+		},
+	}
+}
+
+func avatarCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "avatar",
+		Short: "Launch NEXA transparent floating mascot window widget",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			agent, cfg, memStore, err := initAgent()
+			if err != nil {
+				return err
+			}
+			cyan.Println("🤖 Launching NEXA Floating Mascot Avatar...")
+			return gui.LaunchAvatarApp(gui.NewApp(agent, cfg, memStore))
+		},
+	}
+}
+
+func dashboardCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "dashboard",
+		Short: "Launch NEXA full management UI dashboard window",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			agent, cfg, memStore, err := initAgent()
+			if err != nil {
+				return err
+			}
+			cyan.Println("📊 Launching NEXA Management Dashboard...")
 			return gui.LaunchDesktopApp(agent, cfg, memStore)
+		},
+	}
+}
+
+func autostartCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "autostart",
+		Short: "Enable/disable NEXA automatic startup on Windows boot",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cyan.Println("🔌 Registering NEXA to Windows Autostart (HKCU\\...\\Run)...")
+			exePath, err := os.Executable()
+			if err != nil {
+				return fmt.Errorf("could not resolve executable path: %w", err)
+			}
+
+			// Add to HKCU\Software\Microsoft\Windows\CurrentVersion\Run via PowerShell
+			psCmd := fmt.Sprintf(`Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "NEXA" -Value '"%s" daemon'`, exePath)
+			execCmd := exec.Command("powershell", "-NoProfile", "-Command", psCmd)
+			if err := execCmd.Run(); err != nil {
+				return fmt.Errorf("failed to register autostart: %w", err)
+			}
+
+			green.Println("✅ NEXA registered to Windows Autostart! It will now launch headlessly when Windows boots.")
+			return nil
 		},
 	}
 }

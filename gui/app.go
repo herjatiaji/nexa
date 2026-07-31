@@ -9,7 +9,9 @@ import (
 
 	"github.com/heraji/jarvis/config"
 	"github.com/heraji/jarvis/core"
+	"github.com/heraji/jarvis/events"
 	"github.com/heraji/jarvis/memory"
+	"github.com/heraji/jarvis/observer"
 	"github.com/heraji/jarvis/security"
 	"github.com/heraji/jarvis/voice"
 	"github.com/heraji/jarvis/voice/speech"
@@ -40,33 +42,55 @@ type StatusInfo struct {
 
 // App is the Wails application backend struct.
 type App struct {
-	agent         *core.Agent
-	cfg           *config.Config
-	memStore      *memory.MemoryStore
-	ctx           context.Context
-	mu            sync.Mutex
-	voiceActive   bool
-	voiceCleanup  func()
-	ttsEngine     *voice.TTS
-	speechPlanner *speech.SpeechPlanner
+	agent           *core.Agent
+	cfg             *config.Config
+	memStore        *memory.MemoryStore
+	ctx             context.Context
+	mu              sync.Mutex
+	voiceActive     bool
+	voiceCleanup    func()
+	ttsEngine       *voice.TTS
+	speechPlanner   *speech.SpeechPlanner
+	eventBus        *events.EventBus
+	desktopObserver *observer.DesktopObserver
+	awareness       *observer.AwarenessManager
 }
 
 // NewApp creates a new App instance with the NEXA agent, config, and memory store.
 func NewApp(agent *core.Agent, cfg *config.Config, memStore *memory.MemoryStore) *App {
 	tts := voice.NewTTS(cfg.TTSVoice, cfg.TTSRate, cfg.EnableTTS)
 	sp := speech.NewSpeechPlanner(speech.DefaultPersonality())
-	return &App{
-		agent:         agent,
-		cfg:           cfg,
-		memStore:      memStore,
-		ttsEngine:     tts,
-		speechPlanner: sp,
+	eb := events.NewEventBus()
+	obs := observer.NewDesktopObserver(eb)
+	aw := observer.NewAwarenessManager(eb)
+
+	app := &App{
+		agent:           agent,
+		cfg:             cfg,
+		memStore:        memStore,
+		ttsEngine:       tts,
+		speechPlanner:   sp,
+		eventBus:        eb,
+		desktopObserver: obs,
+		awareness:       aw,
 	}
+
+	// Forward all EventBus events to Wails frontend
+	eb.Subscribe("*", func(evt events.Event) {
+		if app.ctx != nil {
+			runtime.EventsEmit(app.ctx, string(evt.Type), evt.Payload)
+		}
+	})
+
+	return app
 }
 
 // Startup is called by Wails when the application starts. Stores the runtime context.
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
+	if a.desktopObserver != nil {
+		a.desktopObserver.Start()
+	}
 }
 
 // Chat sends a message to the NEXA agent and returns the full response with tool logs.
