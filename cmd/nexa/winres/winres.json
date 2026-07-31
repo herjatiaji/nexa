@@ -1,0 +1,48 @@
+{
+  "RT_GROUP_ICON": {
+    "MAIN": {
+      "0000": [
+        "icon.png"
+      ]
+    }
+  },
+  "RT_MANIFEST": {
+    "#1": {
+      "0000": {
+        "identity": {
+          "name": "NEXA AI Desktop Companion",
+          "version": "3.0.0.0"
+        },
+        "description": "NEXA AI Desktop Companion Platform",
+        "minimum-os": "win7",
+        "execution-level": "asInvoker",
+        "ui-access": false,
+        "auto-elevate": false,
+        "dpi-aware": "true/pm"
+      }
+    }
+  },
+  "RT_VERSION": {
+    "#1": {
+      "0000": {
+        "fixed": {
+          "file_version": "3.0.0.0",
+          "product_version": "3.0.0.0"
+        },
+        "info": {
+          "0409": {
+            "Comments": "NEXA AI Desktop Companion Platform",
+            "CompanyName": "Herjati Aji",
+            "FileDescription": "NEXA AI Desktop Companion",
+            "FileVersion": "3.0.0.0",
+            "InternalName": "nexa",
+            "LegalCopyright": "Copyright (c) 2026",
+            "OriginalFilename": "nexa.exe",
+            "ProductName": "NEXA AI Companion",
+            "ProductVersion": "3.0.0.0"
+          }
+        }
+      }
+    }
+  }
+}

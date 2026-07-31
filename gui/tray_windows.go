@@ -94,9 +94,16 @@ func (a *App) toggleWindow() {
 
 // AddTrayIcon adds a basic system tray icon using Shell_NotifyIconW.
 func (a *App) AddTrayIcon() {
+	pGetModuleHandleW := user32.NewProc("GetModuleHandleW")
+
 	go func() {
-		// Load default application icon
-		hIcon, _, _ := pLoadIconW.Call(0, uintptr(32512)) // IDI_APPLICATION
+		// Load NEXA's embedded EXE icon handle from current process instance
+		hInstance, _, _ := pGetModuleHandleW.Call(0)
+		hIcon, _, _ := pLoadIconW.Call(hInstance, uintptr(1)) // Embedded MAIN icon resource ID #1
+		if hIcon == 0 {
+			// Fallback to IDI_APPLICATION if resource handle unavailable
+			hIcon, _, _ = pLoadIconW.Call(0, uintptr(32512))
+		}
 
 		var nid notifyIconData
 		nid.CbSize = uint32(unsafe.Sizeof(nid))
@@ -104,13 +111,13 @@ func (a *App) AddTrayIcon() {
 		nid.UFlags = uint32(nifIcon | nifTip)
 		nid.HIcon = hIcon
 
-		// Set tooltip "NEXA — AI Assistant"
-		tip := "NEXA — AI Assistant"
+		// Set tooltip "NEXA — AI Desktop Companion"
+		tip := "NEXA — AI Desktop Companion"
 		tipUTF16, _ := syscall.UTF16FromString(tip)
 		copy(nid.SzTip[:], tipUTF16)
 
 		pShellNotifyIconW.Call(uintptr(nimAdd), uintptr(unsafe.Pointer(&nid)))
-		fmt.Println("🔔 System tray icon added")
+		fmt.Println("🔔 System tray icon added (NEXA Custom Icon)")
 	}()
 }
 
