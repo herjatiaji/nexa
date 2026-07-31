@@ -1,5 +1,17 @@
+# Environment & Secrets
 .env
+
+# Binary Executables
+*.exe
+*.exe~
+nexa.exe
 jarvis.exe
-jarvis.exe~
-scratch/mic_async_test.ps1
+
+# Persistent Data & Scratch
 nexa_memory.json
+scratch/
+
+# Wails / Frontend Build Artifacts
+gui/frontend/node_modules/
+gui/frontend/dist/
+gui/frontend/src/wailsjs/

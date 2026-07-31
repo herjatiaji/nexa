@@ -522,15 +522,14 @@ func voiceCmd() *cobra.Command {
 func guiCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "gui",
-		Short: "Launch NEXA Modern Desktop GUI Dashboard",
+		Short: "Launch NEXA native desktop application",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			agent, cfg, memStore, err := initAgent()
 			if err != nil {
 				return err
 			}
-			cyan.Println("🚀 Starting NEXA GUI Live Server & Desktop Dashboard...")
-			srv := gui.NewServer(agent, cfg, memStore, 18420)
-			return srv.Start()
+			cyan.Println("🚀 Launching NEXA Desktop...")
+			return gui.LaunchDesktopApp(agent, cfg, memStore)
 		},
 	}
 }
