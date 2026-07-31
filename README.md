@@ -1,55 +1,52 @@
-# 🤖 NEXA — Personal AI Desktop Companion & Voice Assistant
+# 🤖 NEXA — Personal AI Desktop Companion & Speech Intelligence Platform
 
-[![Release](https://img.shields.io/badge/Version-v2.0.0-success?style=flat-square)](https://github.com/)
+[![Release](https://img.shields.io/badge/Version-v2.1.0-success?style=flat-square)](https://github.com/)
 [![Go Version](https://img.shields.io/badge/Go-1.20%2B-00ADD8?style=flat-square&logo=go)](https://golang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react)](https://reactjs.org/)
 [![Wails](https://img.shields.io/badge/Wails-v2-red?style=flat-square)](https://wails.io/)
 [![SQLite](https://img.shields.io/badge/Database-SQLite-003B57?style=flat-square&logo=sqlite)](https://sqlite.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.style=flat-square)](LICENSE)
 
-**NEXA v2.0.0** transforms NEXA from a simple assistant into a **Living AI Desktop Companion** in Go, Wails v2, React, SQLite, and Python. It features a Solarpunk Frutiger Aero UI theme, an **Emotion Engine & Mascot State Machine**, **Animated Facial Expressions**, **Floating Notification Speech Bubbles**, **Idle Pet Behaviors**, **Plugin SDK Platform**, **OS-Style Permission Manager** (`🛡️ PERMISSIONS`), **Typed Parameter Schema Validation**, **SQLite Database Storage** (`nexa_data.db`), **Agent Tracing System** (`⚡ TRACES`), **Task Planning Engine**, **Semantic Vector Memory**, hands-free Voice Activation (`🎤 START VOICE`), System Tray integration, `Ctrl+Space` global hotkey, Whisper STT, Piper TTS, screen vision, and MCP support.
+**NEXA v2.1.0** is an advanced **Living AI Desktop Companion & Speech Intelligence Platform** built with Go, Wails v2, React, SQLite, and Python. It features the **NEXA Speech Intelligence Layer**, an **Emotion Engine & Mascot State Machine**, **Animated Mascot Facial Expressions**, **Floating Notification Speech Bubbles**, **Idle Pet Behaviors**, **Solarpunk Frutiger Aero UI**, **Plugin SDK Platform**, **OS-Style Permission Manager** (`🛡️ PERMISSIONS`), **Typed Parameter Schema Validation**, **SQLite Database Storage** (`nexa_data.db`), **Agent Tracing System** (`⚡ TRACES`), **Task Planning Engine**, **Semantic Vector Memory**, hands-free Voice Activation (`🎤 START VOICE`), System Tray integration, `Ctrl+Space` global hotkey, Whisper STT, Piper TTS, screen vision, and MCP support.
 
 ---
 
-## ✨ Key Features in v2.0.0
+## ✨ Key Features in v2.1.0
 
-- 🤖 **NEXA AI Desktop Companion & Emotion Engine (`core/emotion.go`)**  
-  NEXA now has a living personality on your desktop! Features real-time state machine expressions:
-  - `IDLE`: Relaxed aqua aura `( ◉ ◉ )`
-  - `LISTENING`: Glowing emerald green `( ⚡ ⚡ )`
-  - `THINKING`: Purple orbit rotation `( ◌ ◌ )`
-  - `EXECUTING`: Amber gold spark `( ⚙️ ⚙️ )`
-  - `SPEAKING`: Bright cyan audio wave `( 🔊 🔊 )`
-  - `HAPPY`: Cool lime sunglasses `( 😎 😎 )`
-  - `CONFUSED`: Coral red drop `( 😕 😕 )`
-  - `YAWN`: Soft aquamarine zzz after 3m idle `( 💤 💤 )`
+### 🎙️ NEXA Speech Intelligence Layer (`voice/speech/`)
+Replaces flat TTS with a multi-stage expressive speech synthesis architecture:
+- 🧩 **Speech Planner (`speech/speech.go`)**: Segments responses into natural speech chunks (15–40 words). Uses single-chunk synthesis for short prompts and multi-chunk concatenation with 30ms crossfades for long explanations.
+- 🎭 **Rule-Based Emotion Analyzer (`speech/emotion.go`)**: Analyzes text lexical patterns, punctuation density (`!`, `?`, `...`), and emojis to detect 7 distinct emotional tones: `neutral`, `happy`, `excited`, `thoughtful`, `urgent`, `sad`, and `confident` (0 API cost / 0 latency).
+- 🎛️ **Prosody Controller (`speech/prosody.go`)**: Dynamically modulates Piper TTS synthesis parameters (`SpeedScale`, `PitchShift`, `SentenceSilence`, `Emphasis`) based on the detected emotion tag.
+- 🇬🇧 **Personality Engine (`speech/personality.go`)**: Defines the NEXA persona (British professional, warm, articulate). Features `EmotionDamping` (0.55) to attenuate raw prosody changes so emotions sound natural, composed, and human-like rather than exaggerated.
+- 🔊 **WAV Audio Post-Processor (`speech/postprocess.go`)**: Pure Go audio pipeline that peak-normalizes output to -3dBFS, trims leading/trailing silence, and crossfades multi-chunk audio files without external ffmpeg dependencies.
 
-- 💬 **Floating Notification Speech Bubbles (`FloatingCompanion.tsx`)**  
-  Interactive speech bubble toasts floating right next to the mascot sphere when NEXA responds or executes tools (*"Opened Spotify! 😎"*, *"Listening for 'Hey Nexa'..."*).
+### 🤖 NEXA AI Mascot & Desktop Companion (`core/emotion.go`)
+NEXA lives directly on your Windows desktop with dynamic facial expressions and real-time state machine indicators:
+- `IDLE`: Relaxed aqua aura `( ◉ ◉ )`
+- `LISTENING`: Glowing emerald green `( ⚡ ⚡ )`
+- `THINKING`: Purple orbit rotation `( ◌ ◌ )`
+- `EXECUTING`: Amber gold spark `( ⚙️ ⚙️ )`
+- `SPEAKING`: Bright cyan audio wave `( 🔊 🔊 )`
+- `HAPPY`: Cool lime sunglasses `( 😎 😎 )`
+- `CONFUSED`: Coral red drop `( 😕 😕 )`
+- `YAWN`: Soft aquamarine zzz after 3 minutes idle `( 💤 💤 )`
 
-- 🌿 **Solarpunk Frutiger Aero Theme**  
-  Glossy skeuomorphic glass panels, water droplet orb reflection, aquamarine/emerald aurora backdrop, and specular pill glass bubbles.
+### 💬 Floating Speech Bubbles & Visual Emotion Badges
+- **Speech Bubble Toasts (`FloatingCompanion.tsx`)**: Interactive glass toasts floating next to the mascot sphere when NEXA responds or executes tools (*"Opened Spotify! 😎"*, *"Listening for 'Hey Nexa'..."*).
+- **Speech Emotion Indicator (`VoiceReactor.tsx`)**: Real-time color-coded badge showing current speech emotion and confidence level (e.g. `😊 Happy 92%`).
 
-- 🔌 **Plugin SDK Platform (`plugins/plugin.go`)**  
-  Modular Go plugin interface (`Plugin`) allowing custom third-party plugins. Pre-bundled with `nexa-plugin-docker`.
+### 🌿 Solarpunk Frutiger Aero Aesthetic
+- Skeuomorphic glass panels (`backdrop-filter: blur(30px)`), aquamarine/emerald ocean aurora backdrop, specular pill glass bubbles, and a liquid water droplet orb.
 
-- 🛡️ **OS-Style Agent Permission Manager (`security/permissions.go`)**  
-  Granular security access control (`ALLOW`, `CONFIRM`, `DENY`) for applications, files, and commands via the **`🛡️ PERMISSIONS`** modal.
+### ⚡ React Portal Modal Overlays
+- Top-level modal overlays using `ReactDOM.createPortal` for **`⚡ TRACES`** and **`🛡️ PERMISSIONS`**, preventing layout clipping and CSS stacking context issues across window layers.
 
-- 📐 **Typed Tool Schema & Parameter Validation (`tools/schema.go`)**  
-  Strict JSON Schema validation with `enum`, `required`, and `type` constraints.
-
-- 🧠 **Short-Term Conversation Context Manager (`core/context.go`)**  
-  Tracks session context entities (`last_app`, `last_path`). Resolves ambiguous references like *"Open the project"* or *"Close it"*.
-
-- 🗄️ **SQLite Database Storage (`nexa_data.db`)**  
-  CGO-free SQLite database (`modernc.org/sqlite`). Auto-migrates legacy `nexa_memory.json` data on startup.
-
-- ⚡ **Agent Tracing System (`⚡ TRACES`)**  
-  Inspect real-time reasoning thoughts, tool invocations, arguments, and raw output via the **`⚡ TRACES`** drawer.
-
-- 🔔 **Windows System Tray & `Ctrl+Space` Global Hotkey**  
-  Press **`Ctrl+Space`** at any time to toggle NEXA to the foreground.
+### 🔌 Plugin SDK & Core Infrastructure
+- **Plugin SDK (`plugins/plugin.go`)**: Pre-bundled with `nexa-plugin-docker`.
+- **Security Manager (`security/permissions.go`)**: Granular OS capability rules (`ALLOW`, `CONFIRM`, `DENY`).
+- **SQLite DB (`memory/db.go`)**: CGO-free database with automatic legacy JSON migration.
+- **Short-Term Context (`core/context.go`)**: Entity tracking for intuitive follow-up commands (*"Open it"*, *"Close the project"*).
 
 ---
 
@@ -68,16 +65,17 @@
             │                                             │
      React Frontend                                 Go Agent Runtime
      • FloatingCompanion (Solarpunk Mascot + 💬)      • core/agent.go (ReAct Loop)
-     • VoiceReactor (animated orb + 🎤 Voice ON)     • core/emotion.go (Emotion Engine)
-     • MemoryPanel (with live delete)               • core/trace.go (Agent Tracer)
-     • TraceInspector (⚡ TRACES Drawer)             • core/planner.go (Task Planner)
-     • PermissionsModal (🛡️ PERMISSIONS)            • core/context.go (Short-Term State)
-     • StatusBar (provider & model info)            • security/permissions.go (OS Rules)
-     • System Tray & Hotkey (Ctrl+Space)            • tools/schema.go (Parameter Validation)
+     • VoiceReactor (orb + speech emotion badge)     • core/emotion.go (Emotion Engine)
+     • MemoryPanel (semantic memory management)     • voice/speech/ (Speech Intelligence)
+     • TraceInspector (⚡ TRACES React Portal)        • core/trace.go (Agent Tracer)
+     • PermissionsModal (🛡️ PERMISSIONS Modal)       • core/planner.go (Task Planner)
+     • StatusBar (provider & model telemetry)       • core/context.go (Short-Term State)
+     • System Tray & Hotkey (Ctrl+Space)            • security/permissions.go (OS Rules)
+                                                    • tools/schema.go (Parameter Validation)
                                                     • plugins/ (Plugin SDK Platform)
                                                     • memory/db.go (SQLite Database)
-                                                    • llm/ (6 Providers)
-                                                    • voice/ (STT/TTS/Wake)
+                                                    • llm/ (6 LLM Providers)
+                                                    • voice/ (STT/TTS/Wake/Speech)
 ```
 
 ---
