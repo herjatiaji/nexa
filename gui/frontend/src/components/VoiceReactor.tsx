@@ -8,7 +8,6 @@ export default function VoiceReactor() {
   const [statusMsg, setStatusMsg] = useState('Voice Engine Offline');
 
   useEffect(() => {
-    // Fetch initial voice status
     window.go.gui.App.GetStatus().then(status => {
       if (status.voiceActive) {
         setVoiceActive(true);
@@ -68,17 +67,21 @@ export default function VoiceReactor() {
         <button
           onClick={toggleVoice}
           style={{
-            background: voiceActive ? 'rgba(52, 211, 153, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-            border: `1px solid ${voiceActive ? '#34d399' : 'rgba(255, 255, 255, 0.1)'}`,
-            color: voiceActive ? '#34d399' : 'var(--text-muted)',
-            padding: '4px 10px',
-            borderRadius: '12px',
+            background: voiceActive
+              ? 'linear-gradient(180deg, #a7ffeb 0%, #00e676 50%, #00c853 100%)'
+              : 'linear-gradient(180deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.1) 100%)',
+            border: '1px solid rgba(255, 255, 255, 0.8)',
+            color: '#ffffff',
+            padding: '5px 12px',
+            borderRadius: '20px',
             fontSize: '11px',
             cursor: 'pointer',
-            fontWeight: 600,
+            fontWeight: 700,
             display: 'flex',
             alignItems: 'center',
-            gap: '5px'
+            gap: '6px',
+            boxShadow: 'inset 0 1px 2px rgba(255, 255, 255, 0.9), 0 2px 8px rgba(0, 0, 0, 0.15)',
+            textShadow: '0 1px 2px rgba(0,0,0,0.3)',
           }}
         >
           <span>🎤</span>
@@ -88,11 +91,13 @@ export default function VoiceReactor() {
       <div className="reactor-box">
         <div className="orb-container">
           <div className="wave-ring" />
-          <div className={`orb ${orbState === 'thinking' ? 'thinking' : orbState === 'listening' ? 'listening' : ''}`} />
+          <div
+            className={`orb ${
+              orbState === 'thinking' ? 'thinking' : orbState === 'listening' ? 'listening' : ''
+            }`}
+          />
         </div>
-        <div className="reactor-label" style={{ color: voiceActive ? 'var(--cyan)' : 'var(--text-dim)' }}>
-          {statusMsg}
-        </div>
+        <div className="reactor-label">{statusMsg}</div>
       </div>
     </>
   );

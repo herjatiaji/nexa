@@ -38,8 +38,8 @@ export default function PermissionsModal() {
         left: 0,
         width: '100vw',
         height: '100vh',
-        background: 'rgba(5, 9, 18, 0.85)',
-        backdropFilter: 'blur(12px)',
+        background: 'rgba(0, 38, 32, 0.75)',
+        backdropFilter: 'blur(16px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -49,21 +49,22 @@ export default function PermissionsModal() {
     >
       <div
         style={{
-          background: 'rgba(15, 23, 42, 0.95)',
-          border: '1px solid var(--border)',
-          borderRadius: '16px',
-          width: '460px',
+          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.15) 100%)',
+          border: '1.5px solid rgba(255, 255, 255, 0.8)',
+          borderRadius: '24px',
+          width: '470px',
           maxHeight: '85vh',
           padding: '24px',
           display: 'flex',
           flexDirection: 'column',
           gap: '16px',
-          boxShadow: '0 0 40px rgba(56, 189, 248, 0.25)',
+          boxShadow: 'inset 0 2px 4px rgba(255, 255, 255, 0.9), 0 20px 50px rgba(0, 77, 64, 0.5)',
+          backdropFilter: 'blur(30px)',
           overflow: 'hidden',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '15px', fontWeight: 700, color: '#fff', letterSpacing: '1px' }}>
+          <span style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff', letterSpacing: '1px', textShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
             🛡️ OS AGENT PERMISSION MODEL
           </span>
           <button
@@ -71,7 +72,7 @@ export default function PermissionsModal() {
             style={{
               background: 'none',
               border: 'none',
-              color: 'var(--text-muted)',
+              color: '#ffffff',
               fontSize: '16px',
               cursor: 'pointer',
               padding: '4px',
@@ -81,7 +82,7 @@ export default function PermissionsModal() {
           </button>
         </div>
 
-        <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+        <div style={{ fontSize: '12px', color: '#e0f7fa', lineHeight: '1.4', textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>
           Configure granular security access rules for NEXA OS capabilities (ALLOW, CONFIRM, DENY):
         </div>
 
@@ -97,8 +98,12 @@ export default function PermissionsModal() {
         >
           {Object.keys(perms).map(cap => {
             const lvl = perms[cap];
-            const color =
-              lvl === 'ALLOW' ? 'var(--success)' : lvl === 'CONFIRM' ? 'var(--warning)' : 'var(--danger)';
+            const bgGrad =
+              lvl === 'ALLOW'
+                ? 'linear-gradient(180deg, #a7ffeb 0%, #00e676 100%)'
+                : lvl === 'CONFIRM'
+                ? 'linear-gradient(180deg, #ffe082 0%, #ffb300 100%)'
+                : 'linear-gradient(180deg, #ff8a80 0%, #ff5252 100%)';
             return (
               <div
                 key={cap}
@@ -107,26 +112,29 @@ export default function PermissionsModal() {
                   justifyContent: 'space-between',
                   alignItems: 'center',
                   padding: '10px 14px',
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid rgba(255, 255, 255, 0.05)',
-                  borderRadius: '8px',
+                  background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0.1) 100%)',
+                  border: '1px solid rgba(255, 255, 255, 0.45)',
+                  borderRadius: '12px',
                   fontSize: '12px',
                   fontFamily: "'JetBrains Mono', monospace",
+                  boxShadow: 'inset 0 1px 2px rgba(255, 255, 255, 0.7)',
                 }}
               >
-                <span style={{ color: '#fff', fontWeight: 500 }}>{cap}</span>
+                <span style={{ color: '#ffffff', fontWeight: 600, textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>{cap}</span>
                 <button
                   onClick={() => handleToggle(cap, lvl)}
                   style={{
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    border: `1px solid ${color}`,
-                    color: color,
-                    padding: '4px 12px',
-                    borderRadius: '6px',
+                    background: bgGrad,
+                    border: '1px solid rgba(255, 255, 255, 0.9)',
+                    color: '#ffffff',
+                    padding: '4px 14px',
+                    borderRadius: '14px',
                     fontSize: '11px',
                     fontWeight: 700,
                     cursor: 'pointer',
-                    minWidth: '70px',
+                    minWidth: '76px',
+                    boxShadow: 'inset 0 1px 2px rgba(255, 255, 255, 0.9), 0 2px 6px rgba(0,0,0,0.2)',
+                    textShadow: '0 1px 2px rgba(0,0,0,0.3)',
                   }}
                 >
                   {lvl}
@@ -139,15 +147,17 @@ export default function PermissionsModal() {
         <button
           onClick={() => setOpen(false)}
           style={{
-            background: 'linear-gradient(135deg, var(--cyan), #0284c7)',
-            border: 'none',
-            color: '#fff',
+            background: 'linear-gradient(180deg, #a7ffeb 0%, #00e676 50%, #00c853 100%)',
+            border: '1px solid rgba(255, 255, 255, 0.9)',
+            color: '#ffffff',
             padding: '10px',
-            borderRadius: '10px',
-            fontWeight: 600,
+            borderRadius: '16px',
+            fontWeight: 700,
             fontSize: '13px',
             cursor: 'pointer',
             marginTop: '4px',
+            boxShadow: 'inset 0 2px 4px rgba(255, 255, 255, 0.9), 0 4px 14px rgba(0, 230, 118, 0.5)',
+            textShadow: '0 1px 2px rgba(0, 70, 30, 0.5)',
           }}
         >
           Save & Close
@@ -161,17 +171,19 @@ export default function PermissionsModal() {
       <button
         onClick={() => setOpen(true)}
         style={{
-          background: 'rgba(56, 189, 248, 0.08)',
-          border: '1px solid var(--border)',
-          color: 'var(--cyan)',
-          padding: '4px 10px',
-          borderRadius: '12px',
+          background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.15) 100%)',
+          border: '1px solid rgba(255, 255, 255, 0.7)',
+          color: '#ffffff',
+          padding: '5px 12px',
+          borderRadius: '20px',
           fontSize: '11px',
           cursor: 'pointer',
-          fontWeight: 600,
+          fontWeight: 700,
           display: 'flex',
           alignItems: 'center',
           gap: '5px',
+          boxShadow: 'inset 0 1px 2px rgba(255, 255, 255, 0.9), 0 2px 8px rgba(0, 0, 0, 0.15)',
+          textShadow: '0 1px 2px rgba(0,0,0,0.3)',
         }}
       >
         <span>🛡️</span>
