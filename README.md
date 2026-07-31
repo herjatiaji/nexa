@@ -1,41 +1,47 @@
 # 🤖 NEXA — Personal AI Desktop & Voice Assistant
 
-[![Release](https://img.shields.io/badge/Version-v1.3.0-success?style=flat-square)](https://github.com/)
+[![Release](https://img.shields.io/badge/Version-v1.4.0-success?style=flat-square)](https://github.com/)
 [![Go Version](https://img.shields.io/badge/Go-1.20%2B-00ADD8?style=flat-square&logo=go)](https://golang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react)](https://reactjs.org/)
 [![Wails](https://img.shields.io/badge/Wails-v2-red?style=flat-square)](https://wails.io/)
 [![SQLite](https://img.shields.io/badge/Database-SQLite-003B57?style=flat-square&logo=sqlite)](https://sqlite.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.style=flat-square)](LICENSE)
 
-**NEXA v1.3.0** is an ultra-fast, hands-free personal AI desktop assistant built in Go, Wails v2, React, SQLite, and Python. It features a **Native Windows Desktop Application**, **SQLite Database Storage** (`nexa_data.db`), **Agent Tracing System**, **Task Planning Engine**, **Semantic Vector Memory**, interactive Voice Activation (`🎤 START VOICE`), multi-LLM provider support (Groq, OpenAI, DeepSeek, OpenRouter, Gemini, Ollama), System Tray integration, `Ctrl+Space` global hotkey, real-time neural wake word detection, OpenAI Whisper speech-to-text, Rhasspy Piper neural voice synthesis, live web searching, a 3-tier command risk analyzer, screen vision, and Model Context Protocol (MCP) support.
+**NEXA v1.4.0** is an ultra-fast, hands-free personal AI desktop assistant built in Go, Wails v2, React, SQLite, and Python. It features a **Plugin SDK Platform**, **OS-Style Permission Manager** (`🛡️ PERMISSIONS`), **Typed Parameter Schema Validation**, **Short-Term Conversation Context**, **SQLite Database Storage** (`nexa_data.db`), **Agent Tracing System** (`⚡ TRACES`), **Task Planning Engine**, **Semantic Vector Memory**, interactive Voice Activation (`🎤 START VOICE`), multi-LLM provider support (Groq, OpenAI, DeepSeek, OpenRouter, Gemini, Ollama), System Tray integration, `Ctrl+Space` global hotkey, real-time neural wake word detection, OpenAI Whisper speech-to-text, Rhasspy Piper neural voice synthesis, live web searching, screen vision, and Model Context Protocol (MCP) support.
 
 ---
 
-## ✨ Key Features in v1.3.0
+## ✨ Key Features in v1.4.0
+
+- 🔌 **Plugin SDK Platform (`plugins/plugin.go`)**  
+  Modular Go plugin interface (`Plugin`) allowing developers to extend NEXA with custom plugins (e.g. `nexa-plugin-docker`, `nexa-plugin-github`). Comes pre-bundled with an example Docker plugin for container management (`docker ps`, `logs`, `start`, `stop`).
+
+- 🛡️ **OS-Style Agent Permission Manager (`security/permissions.go`)**  
+  Granular security access control model (`nexa_permissions.json`). Set capability rules (`ALLOW`, `CONFIRM`, `DENY`) for applications, file deletion, and shell execution via the interactive **`🛡️ PERMISSIONS`** modal in the React GUI Desktop App.
+
+- 📐 **Typed Tool Schema & Parameter Validation (`tools/schema.go`)**  
+  Strict parameter JSON Schema validation with `enum`, `required`, and `type` constraints. Catch invalid LLM tool parameters before execution.
+
+- 🧠 **Short-Term Conversation Context Manager (`core/context.go`)**  
+  Tracks session context entities (`last_app`, `last_path`) across turns. Resolves ambiguous follow-up references like *"Open the project"* or *"Close it"*.
 
 - 🗄️ **SQLite Database Storage (`nexa_data.db`)**  
-  Upgraded memory storage engine from single-file JSON to a high-performance CGO-free SQLite database (`modernc.org/sqlite`). Automatically migrates legacy `nexa_memory.json` data on startup with zero data loss! Includes tables for `memories` and `conversations`.
+  High-performance SQLite database storage (`modernc.org/sqlite`). Auto-migrates legacy `nexa_memory.json` data on startup.
 
 - ⚡ **Agent Tracing System (`⚡ TRACES`)**  
-  Full developer mode trace logging. Inspect real-time reasoning steps, thoughts, tool invocations, arguments, and raw tool output via the interactive **`⚡ TRACES`** drawer in the React GUI Desktop App.
+  Inspect real-time reasoning thoughts, tool invocations, arguments, and raw output via the **`⚡ TRACES`** drawer in the React GUI Desktop App.
 
 - 🎯 **Task Planning Engine**  
-  Decomposes complex multi-step user prompts into structured sub-tasks (`Plan: [Task 1, Task 2, Task 3]`) before execution.
-
-- 🧠 **Semantic Vector Memory**  
-  Conceptual similarity search over stored memories using cosine similarity over token frequency vectors. Querying *"remind me about my food idea"* automatically matches related concepts like *"family recipe pasta"*.
+  Decomposes complex multi-step user prompts into structured sub-tasks (`Plan: [Task 1, Task 2, Task 3]`).
 
 - 🖥️ **Native Windows Desktop App (Wails v2 + React 18 + TS)**  
-  Standalone native desktop application using Wails v2 with direct Go↔JS bindings (no HTTP API, no localhost browser required).
+  Standalone native desktop application using Wails v2 with direct Go↔JS bindings.
 
 - 🎙️ **Desktop GUI Voice Activation Mode (`🎤 START VOICE`)**  
-  Toggle hands-free voice command listening inside the GUI desktop app. Say **"Hey Nexa"** or **"Nexa"** to activate and speak commands naturally.
+  Hands-free wake word detection ("Hey Nexa") directly inside the GUI desktop app.
 
 - 🔔 **Windows System Tray & `Ctrl+Space` Global Hotkey**  
   Runs in the notification tray. Press **`Ctrl+Space`** at any time to toggle NEXA to the foreground.
-
-- 🤖 **Multi-LLM Provider Engine**  
-  Supports Groq, OpenAI, OpenRouter, DeepSeek, Google Gemini, and Ollama Local.
 
 ---
 
@@ -56,10 +62,12 @@
      • ChatStream (with tool badges)                • core/agent.go (ReAct Loop)
      • VoiceReactor (animated orb + 🎤 Voice ON)     • core/trace.go (Agent Tracer)
      • MemoryPanel (with live delete)               • core/planner.go (Task Planner)
-     • TraceInspector (⚡ TRACES Drawer)             • memory/db.go (SQLite Database)
-     • StatusBar (provider & model info)            • memory/semantic.go (Vector Match)
-     • System Tray & Hotkey (Ctrl+Space)            • llm/ (6 Providers)
-                                                    • tools/ (7 Tools)
+     • TraceInspector (⚡ TRACES Drawer)             • core/context.go (Short-Term State)
+     • PermissionsModal (🛡️ PERMISSIONS)            • security/permissions.go (OS Rules)
+     • StatusBar (provider & model info)            • tools/schema.go (Parameter Validation)
+     • System Tray & Hotkey (Ctrl+Space)            • plugins/ (Plugin SDK Platform)
+                                                    • memory/db.go (SQLite Database)
+                                                    • llm/ (6 Providers)
                                                     • voice/ (STT/TTS/Wake)
 ```
 
@@ -97,17 +105,48 @@ go build -tags desktop,production -o nexa.exe ./cmd/nexa/
 
 ---
 
-## 🔧 Registered Tools & Capabilities
+## 🔧 Registered Tools & Plugins
 
-| Tool | Actions | Description |
-|------|---------|-------------|
-| **`memory`** | `store`, `get`, `list`, `delete` | Long-term persistent SQLite memory store (`nexa_data.db`). Supports semantic vector search and dynamic system prompt injection. |
-| **`run_command`** | `execute` | Safely execute PowerShell and CMD commands with 3-tier Risk Analyzer (`ALLOW`, `CONFIRM`, `DENY`). |
-| **`desktop_apps`** | `launch`, `close`, `list`, `focus` | Launch desktop apps, UWP store apps, File Explorer drives, close processes. |
-| **`filesystem`** | `list_dir`, `read_file`, `write_file`, `append_file`, `copy`, `move`, `delete`, `search`, `find_files`, `get_info` | Complete file manager operations with drive letter normalization. |
-| **`web`** | `search`, `fetch`, `weather` | DuckDuckGo live web search, URL content extraction, and weather reporting via `wttr.in`. |
-| **`vision`** | `capture` | Captures primary Windows screen snapshot as Base64 PNG payload. |
-| **`mcp`** | `call` | JSON-RPC 2.0 stdio transport bridge to external MCP tool servers. |
+| Tool / Plugin | Type | Description |
+|---------------|------|-------------|
+| **`docker`** | Plugin (`nexa-plugin-docker`) | Docker container management plugin (`docker ps`, `logs`, `start`, `stop`, `inspect`). |
+| **`memory`** | Built-in Tool | Persistent SQLite memory store (`nexa_data.db`). Supports semantic vector search and dynamic system prompt injection. |
+| **`run_command`** | Built-in Tool | Safely execute PowerShell and CMD commands with OS Permission rules. |
+| **`desktop_apps`** | Built-in Tool | Launch desktop apps, UWP store apps, File Explorer drives, close processes. |
+| **`filesystem`** | Built-in Tool | Complete file manager operations with drive letter normalization. |
+| **`web`** | Built-in Tool | DuckDuckGo live web search, URL content extraction, and weather reporting via `wttr.in`. |
+| **`vision`** | Built-in Tool | Captures primary Windows screen snapshot as Base64 PNG payload. |
+| **`mcp`** | Built-in Tool | JSON-RPC 2.0 stdio transport bridge to external MCP tool servers. |
+
+---
+
+## 📁 Project Structure
+
+```
+.
+├── cmd/
+│   └── nexa/             # Main CLI application entry point
+├── config/               # Environment & system prompt configurations
+├── core/                 # ReAct agent loop, TraceRecorder, Planner, ContextManager
+├── gui/                  # Native Desktop Application (Wails v2 + React 18)
+│   ├── app.go            # Wails App struct (Chat, GetPermissions, SetPermission, GetTraces)
+│   ├── wails.go          # Native Wails window launcher & asset embed
+│   ├── tray_windows.go   # Win32 System Tray icon & Ctrl+Space global hotkey
+│   └── frontend/         # React + TypeScript + Vite frontend dashboard
+│       └── src/components/ # ChatStream, VoiceReactor, MemoryPanel, TraceInspector, PermissionsModal
+├── llm/                  # Multi-LLM provider clients (Groq, OpenAI, OpenRouter, DeepSeek, Gemini, Ollama)
+├── mcp/                  # Model Context Protocol JSON-RPC 2.0 stdio client
+├── memory/               # SQLite database store (`nexa_data.db`) & semantic vector search
+├── plugins/              # Plugin SDK Platform
+│   ├── plugin.go         # Plugin interface & Registry
+│   └── docker/           # Built-in Docker management plugin
+├── security/             # OS-Style Permission Manager (`nexa_permissions.json`)
+├── tools/                # Extensible tool registry & typed schema validator (`schema.go`)
+├── voice/                # Audio subsystem (openWakeWord, Whisper STT, Piper TTS)
+├── .env                  # Local configuration settings
+├── wails.json            # Wails v2 project configuration
+└── README.md             # Project documentation
+```
 
 ---
 
