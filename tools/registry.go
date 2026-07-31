@@ -3,18 +3,21 @@ package tools
 import (
 	"fmt"
 
+	"github.com/heraji/jarvis/security"
 	"github.com/heraji/jarvis/types"
 )
 
 // Registry manages available tools and dispatches execution requests.
 type Registry struct {
-	tools map[string]Tool
+	tools       map[string]Tool
+	permManager *security.PermissionManager
 }
 
-// NewRegistry creates a new empty tool registry.
+// NewRegistry creates a new tool registry with permission checking.
 func NewRegistry() *Registry {
 	return &Registry{
-		tools: make(map[string]Tool),
+		tools:       make(map[string]Tool),
+		permManager: security.NewPermissionManager(),
 	}
 }
 
@@ -29,6 +32,11 @@ func (r *Registry) Get(name string) (Tool, bool) {
 	return t, ok
 }
 
+// GetPermissionManager returns the attached PermissionManager.
+func (r *Registry) GetPermissionManager() *security.PermissionManager {
+	return r.permManager
+}
+
 // ListDefinitions returns all tool definitions for sending to the LLM.
 func (r *Registry) ListDefinitions() []types.ToolDefinition {
 	var defs []types.ToolDefinition
@@ -38,11 +46,18 @@ func (r *Registry) ListDefinitions() []types.ToolDefinition {
 	return defs
 }
 
-// Execute runs a tool by name with the given input.
+// Execute runs a tool by name with parameter validation and permission checks.
 func (r *Registry) Execute(name string, input string) (string, error) {
 	t, ok := r.tools[name]
 	if !ok {
 		return "", fmt.Errorf("tool not found: %s", name)
 	}
+
+	// Check OS permission level
+	level := r.permManager.CheckPermission(name)
+	if level == security.LevelDeny {
+		return fmt.Errorf("permission denied: tool '%s' is blocked by security policy", name).Error(), nil
+	}
+
 	return t.Execute(input)
 }

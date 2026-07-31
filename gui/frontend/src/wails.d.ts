@@ -9,6 +9,8 @@ declare global {
           GetTraces(): Promise<TraceStep[]>;
           CreatePlan(prompt: string): Promise<Plan>;
           SearchMemories(query: string): Promise<SemanticMatch[]>;
+          GetPermissions(): Promise<Record<string, string>>;
+          SetPermission(capability: string, level: string): Promise<void>;
           GetMemories(): Promise<Record<string, string>>;
           DeleteMemory(key: string): Promise<void>;
           GetStatus(): Promise<StatusInfo>;

@@ -10,6 +10,7 @@ import (
 	"github.com/heraji/jarvis/config"
 	"github.com/heraji/jarvis/core"
 	"github.com/heraji/jarvis/memory"
+	"github.com/heraji/jarvis/security"
 	"github.com/heraji/jarvis/voice"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -227,6 +228,21 @@ func (a *App) DeleteMemory(key string) error {
 	return a.memStore.Delete(key)
 }
 
+// GetPermissions returns current OS permission settings.
+func (a *App) GetPermissions() map[string]string {
+	permMap := make(map[string]string)
+	for k, v := range security.NewPermissionManager().ListPermissions() {
+		permMap[k] = string(v)
+	}
+	return permMap
+}
+
+// SetPermission updates an OS permission rule.
+func (a *App) SetPermission(capability string, level string) error {
+	pm := security.NewPermissionManager()
+	return pm.SetPermission(capability, security.PermissionLevel(level))
+}
+
 // GetStatus returns current LLM provider, model, TTS state, and version.
 func (a *App) GetStatus() StatusInfo {
 	model := a.cfg.GroqModel
@@ -247,7 +263,7 @@ func (a *App) GetStatus() StatusInfo {
 		Model:       model,
 		TTS:         a.cfg.EnableTTS,
 		VoiceActive: a.voiceActive,
-		Version:     "1.3.0",
+		Version:     "1.4.0",
 	}
 }
 

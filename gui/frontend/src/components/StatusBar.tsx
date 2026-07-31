@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { StatusInfo } from '../wails.d';
 import TraceInspector from './TraceInspector';
+import PermissionsModal from './PermissionsModal';
 
 export default function StatusBar() {
   const [status, setStatus] = useState<StatusInfo | null>(null);
@@ -18,14 +19,15 @@ export default function StatusBar() {
   }, []);
 
   return (
-    <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+    <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <PermissionsModal />
       <TraceInspector />
       <span className="provider-tag">
         {status ? `${status.provider.toUpperCase()} (${status.model})` : 'Connecting...'}
       </span>
       <div className="status-badge">
         <div className="status-dot" />
-        <span>v{status?.version || '1.3.0'}</span>
+        <span>v{status?.version || '1.4.0'}</span>
       </div>
     </div>
   );

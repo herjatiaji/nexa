@@ -14,6 +14,7 @@ import (
 	"github.com/heraji/jarvis/gui"
 	"github.com/heraji/jarvis/llm"
 	"github.com/heraji/jarvis/memory"
+	"github.com/heraji/jarvis/plugins/docker"
 	"github.com/heraji/jarvis/tools"
 	"github.com/heraji/jarvis/tools/apps"
 	"github.com/heraji/jarvis/tools/filesystem"
@@ -123,6 +124,12 @@ func initAgent() (*core.Agent, *config.Config, *memory.MemoryStore, error) {
 	registry.Register(web.New())
 	registry.Register(memorytool.New(memStore))
 	registry.Register(vision.New())
+
+	// Register Plugin SDK plugins (e.g. Docker plugin)
+	dockerPlugin := docker.NewDockerPlugin()
+	for _, tool := range dockerPlugin.Tools() {
+		registry.Register(tool)
+	}
 
 	// Inject remembered facts into system prompt
 	rememberedFacts := memStore.FormatForSystemPrompt()

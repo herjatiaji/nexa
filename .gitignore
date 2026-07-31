@@ -10,6 +10,7 @@ jarvis.exe
 # Persistent Data & Scratch
 nexa_memory.json
 nexa_data.db
+nexa_permissions.json
 scratch/
 
 # Wails / Frontend Build Artifacts
