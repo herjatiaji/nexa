@@ -46,25 +46,28 @@ func (t *TTS) SpeakWithEmotion(payload EmotionPayload) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	cleanText := sanitizeTextForSpeech(payload.Text)
-	if cleanText == "" {
-		return nil
-	}
-	payload.Text = cleanText
-
 	// 1. Phase 1: Try VOICEVOX local REST engine (http://localhost:50021)
 	vvClient := NewVoicevoxClient("http://localhost:50021", 3) // 3: Zundamon
 	if vvClient.IsAvailable() {
-		if wavFile, err := vvClient.SynthesizeSpeech(payload); err == nil {
-			defer os.Remove(wavFile)
-			if runtime.GOOS == "windows" {
-				psPlay := fmt.Sprintf("(New-Object System.Media.SoundPlayer '%s').PlaySync()", strings.ReplaceAll(wavFile, "'", "''"))
-				playCmd := exec.Command("powershell", "-NoProfile", "-Command", psPlay)
-				if err := playCmd.Run(); err == nil {
-					return nil
+		vvPayload := payload
+		vvPayload.Text = sanitizeTextForVoicevox(payload.Text)
+		if vvPayload.Text != "" {
+			if wavFile, err := vvClient.SynthesizeSpeech(vvPayload); err == nil {
+				defer os.Remove(wavFile)
+				if runtime.GOOS == "windows" {
+					psPlay := fmt.Sprintf("(New-Object System.Media.SoundPlayer '%s').PlaySync()", strings.ReplaceAll(wavFile, "'", "''"))
+					playCmd := exec.Command("powershell", "-NoProfile", "-Command", psPlay)
+					if err := playCmd.Run(); err == nil {
+						return nil
+					}
 				}
 			}
 		}
+	}
+
+	cleanText := sanitizeTextForSpeech(payload.Text)
+	if cleanText == "" {
+		return nil
 	}
 
 	// 2. Fallback to Piper Neural TTS (Amy cheerful voice)
@@ -264,4 +267,21 @@ func sanitizeTextForSpeech(text string) string {
 		}
 	}
 	return strings.Join(cleanLines, ". ")
+}
+
+// sanitizeTextForVoicevox keeps Japanese hiragana/katakana/kanji while stripping markdown formatting.
+func sanitizeTextForVoicevox(text string) string {
+	text = codeBlockRegex.ReplaceAllString(text, " ")
+	text = inlineCodeRegex.ReplaceAllString(text, " ")
+	text = urlRegex.ReplaceAllString(text, " ")
+	text = symbolRegex.ReplaceAllString(text, " ")
+	lines := strings.Split(text, "\n")
+	var cleanLines []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			cleanLines = append(cleanLines, trimmed)
+		}
+	}
+	return strings.Join(cleanLines, " ")
 }
