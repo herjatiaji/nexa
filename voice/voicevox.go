@@ -7,16 +7,23 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-
 	"os"
 	"path/filepath"
 	"time"
 )
 
+// EmotionPayload holds emotion metadata passed to VOICEVOX synthesis.
+type EmotionPayload struct {
+	Text    string  `json:"text"`
+	Emotion string  `json:"emotion"` // happy, sad, thinking, excited, neutral
+	Speed   float64 `json:"speed,omitempty"`
+	Pitch   float64 `json:"pitch,omitempty"`
+}
+
 // VoicevoxClient interacts with local VOICEVOX engine REST API (http://localhost:50021).
 type VoicevoxClient struct {
 	BaseURL string
-	Speaker int // e.g. 3 (Zundamon Normal), 1 (Shikikou), 2 (Metan)
+	Speaker int // 3: Zundamon (Normal), 1: Shikikou, 2: Metan, 10: Tsukuyomi
 	client  *http.Client
 }
 
@@ -45,14 +52,14 @@ func (vc *VoicevoxClient) IsAvailable() bool {
 	return true
 }
 
-// SynthesizeSpeech converts text to WAV audio via VOICEVOX REST API.
-func (vc *VoicevoxClient) SynthesizeSpeech(text string) (string, error) {
+// SynthesizeSpeech converts text + emotion payload to WAV audio via VOICEVOX REST API.
+func (vc *VoicevoxClient) SynthesizeSpeech(payload EmotionPayload) (string, error) {
 	if !vc.IsAvailable() {
 		return "", fmt.Errorf("VOICEVOX engine is not running on %s", vc.BaseURL)
 	}
 
 	// 1. Create Audio Query
-	queryURL := fmt.Sprintf("%s/audio_query?speaker=%d&text=%s", vc.BaseURL, vc.Speaker, url.QueryEscape(text))
+	queryURL := fmt.Sprintf("%s/audio_query?speaker=%d&text=%s", vc.BaseURL, vc.Speaker, url.QueryEscape(payload.Text))
 	reqQuery, err := http.NewRequest("POST", queryURL, nil)
 	if err != nil {
 		return "", err
@@ -69,15 +76,42 @@ func (vc *VoicevoxClient) SynthesizeSpeech(text string) (string, error) {
 		return "", err
 	}
 
-	// Tune query JSON for cute pace and pitch
+	// 2. Adjust Audio Parameters according to Phase 2 Emotion JSON Payload
 	var queryData map[string]interface{}
 	if err := json.Unmarshal(queryJSON, &queryData); err == nil {
-		queryData["speedScale"] = 1.08
-		queryData["pitchScale"] = 0.05
+		speed := 1.05
+		pitch := 0.02
+		intonation := 1.1
+
+		switch payload.Emotion {
+		case "happy", "excited":
+			speed = 1.12
+			pitch = 0.08
+			intonation = 1.25
+		case "thinking":
+			speed = 0.95
+			pitch = -0.02
+			intonation = 0.95
+		case "sad", "error":
+			speed = 0.88
+			pitch = -0.08
+			intonation = 0.85
+		}
+
+		if payload.Speed > 0 {
+			speed = payload.Speed
+		}
+		if payload.Pitch != 0 {
+			pitch = payload.Pitch
+		}
+
+		queryData["speedScale"] = speed
+		queryData["pitchScale"] = pitch
+		queryData["intonationScale"] = intonation
 		queryJSON, _ = json.Marshal(queryData)
 	}
 
-	// 2. Synthesize WAV Audio
+	// 3. Synthesize WAV Audio
 	synthURL := fmt.Sprintf("%s/synthesis?speaker=%d", vc.BaseURL, vc.Speaker)
 	reqSynth, err := http.NewRequest("POST", synthURL, bytes.NewBuffer(queryJSON))
 	if err != nil {

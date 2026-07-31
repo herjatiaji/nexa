@@ -34,6 +34,11 @@ func NewTTS(voiceName string, rate int, enabled bool) *TTS {
 
 // Speak speaks the given text synchronously.
 func (t *TTS) Speak(text string) error {
+	return t.SpeakWithEmotion(EmotionPayload{Text: text, Emotion: "happy"})
+}
+
+// SpeakWithEmotion speaks text with Phase 2 Emotion Metadata using VOICEVOX (Phase 1) or Piper fallback.
+func (t *TTS) SpeakWithEmotion(payload EmotionPayload) error {
 	if !t.Enabled {
 		return nil
 	}
@@ -41,15 +46,16 @@ func (t *TTS) Speak(text string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	cleanText := sanitizeTextForSpeech(text)
+	cleanText := sanitizeTextForSpeech(payload.Text)
 	if cleanText == "" {
 		return nil
 	}
+	payload.Text = cleanText
 
-	// 1. Try VOICEVOX engine if local server is running (Japanese / Anime character voice)
-	vvClient := NewVoicevoxClient("http://localhost:50021", 3)
+	// 1. Phase 1: Try VOICEVOX local REST engine (http://localhost:50021)
+	vvClient := NewVoicevoxClient("http://localhost:50021", 3) // 3: Zundamon
 	if vvClient.IsAvailable() {
-		if wavFile, err := vvClient.SynthesizeSpeech(cleanText); err == nil {
+		if wavFile, err := vvClient.SynthesizeSpeech(payload); err == nil {
 			defer os.Remove(wavFile)
 			if runtime.GOOS == "windows" {
 				psPlay := fmt.Sprintf("(New-Object System.Media.SoundPlayer '%s').PlaySync()", strings.ReplaceAll(wavFile, "'", "''"))
@@ -61,7 +67,7 @@ func (t *TTS) Speak(text string) error {
 		}
 	}
 
-	// 2. Try Piper TTS (Amy cheerful voice)
+	// 2. Fallback to Piper Neural TTS (Amy cheerful voice)
 	if err := t.speakPiper(cleanText); err == nil {
 		return nil
 	}
@@ -239,14 +245,16 @@ var (
 	inlineCodeRegex = regexp.MustCompile("`.*?`")
 	urlRegex        = regexp.MustCompile(`https?://\S+`)
 	symbolRegex     = regexp.MustCompile(`[\*#_~>|]`)
+	cjkRegex        = regexp.MustCompile(`[\x{3000}-\x{303f}\x{3040}-\x{309f}\x{30a0}-\x{30ff}\x{ff00}-\x{ffef}\x{4e00}-\x{9faf}]`)
 )
 
-// sanitizeTextForSpeech removes markdown formatting and code blocks for smooth TTS reading.
+// sanitizeTextForSpeech removes markdown formatting, non-ASCII CJK, and code blocks for smooth TTS reading.
 func sanitizeTextForSpeech(text string) string {
 	text = codeBlockRegex.ReplaceAllString(text, " [code block omitted] ")
 	text = inlineCodeRegex.ReplaceAllString(text, " ")
 	text = urlRegex.ReplaceAllString(text, " ")
 	text = symbolRegex.ReplaceAllString(text, " ")
+	text = cjkRegex.ReplaceAllString(text, " ")
 	lines := strings.Split(text, "\n")
 	var cleanLines []string
 	for _, line := range lines {
