@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+
+	"github.com/heraji/jarvis/voice/speech"
 )
 
 // TTS handles text-to-speech synthesis using Piper TTS (British Neural Voice) with SAPI5 fallback.
@@ -72,6 +74,95 @@ func (t *TTS) SpeakAsync(text string) {
 	go func() {
 		_ = t.Speak(text)
 	}()
+}
+
+// SpeakWithProsody speaks text with prosody parameters controlling speed, pitch, and pauses.
+// This is used by the Speech Intelligence Layer for emotion-aware delivery.
+func (t *TTS) SpeakWithProsody(text string, prosody speech.ProsodyParams) error {
+	if !t.Enabled {
+		return nil
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	cleanText := sanitizeTextForSpeech(text)
+	if cleanText == "" {
+		return nil
+	}
+
+	// Try Piper with prosody-tuned parameters
+	if err := t.speakPiperWithProsody(cleanText, prosody); err == nil {
+		return nil
+	}
+
+	// Fallback to standard Windows SAPI5
+	if runtime.GOOS == "windows" {
+		return t.speakWindows(cleanText)
+	}
+
+	return nil
+}
+
+// SynthesizeToFile generates a WAV file from text with prosody params.
+// Returns the path to the generated WAV file. Used by SpeechPlanner.Execute().
+func (t *TTS) SynthesizeToFile(text string, prosody speech.ProsodyParams) (string, error) {
+	if !t.Enabled {
+		return "", fmt.Errorf("TTS is disabled")
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	cleanText := sanitizeTextForSpeech(text)
+	if cleanText == "" {
+		return "", fmt.Errorf("empty text after sanitization")
+	}
+
+	piperExe, modelFile := findPiperLocation()
+	if piperExe == "" || modelFile == "" {
+		return "", fmt.Errorf("piper engine or model not found")
+	}
+
+	tempWav := filepath.Join(os.TempDir(), fmt.Sprintf("nexa_chunk_%d.wav", os.Getpid()))
+
+	// Convert prosody params to Piper CLI flags
+	// Piper length_scale: >1.0 = slower, <1.0 = faster
+	// Our SpeedScale: >1.0 = faster. So: length_scale = 1.0 / SpeedScale
+	lengthScale := 1.0 / prosody.SpeedScale
+	if lengthScale < 0.5 {
+		lengthScale = 0.5
+	}
+	if lengthScale > 2.0 {
+		lengthScale = 2.0
+	}
+
+	sentenceSilence := prosody.SentenceSilence
+	if sentenceSilence < 0.05 {
+		sentenceSilence = 0.05
+	}
+
+	cmd := exec.Command(piperExe, "--model", modelFile, "--output_file", tempWav,
+		"--length_scale", fmt.Sprintf("%.2f", lengthScale),
+		"--sentence_silence", fmt.Sprintf("%.2f", sentenceSilence))
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return "", err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+
+	_, _ = io.WriteString(stdin, cleanText+"\n")
+	stdin.Close()
+
+	if err := cmd.Wait(); err != nil {
+		return "", err
+	}
+
+	return tempWav, nil
 }
 
 // findPiperLocation returns the path to piper.exe and the model.onnx file if installed.
@@ -160,6 +251,71 @@ func (t *TTS) speakPiper(text string) error {
 	return nil
 }
 
+// speakPiperWithProsody uses Piper with emotion-tuned prosody parameters for natural delivery.
+func (t *TTS) speakPiperWithProsody(text string, prosody speech.ProsodyParams) error {
+	piperExe, modelFile := findPiperLocation()
+	if piperExe == "" || modelFile == "" {
+		return fmt.Errorf("piper engine or model not found")
+	}
+
+	tempWav := filepath.Join(os.TempDir(), fmt.Sprintf("nexa_prosody_%d.wav", os.Getpid()))
+	defer os.Remove(tempWav)
+
+	// Convert SpeedScale to Piper length_scale (inverted relationship)
+	lengthScale := 1.0 / prosody.SpeedScale
+	if lengthScale < 0.5 {
+		lengthScale = 0.5
+	}
+	if lengthScale > 2.0 {
+		lengthScale = 2.0
+	}
+
+	sentenceSilence := prosody.SentenceSilence
+	if sentenceSilence < 0.05 {
+		sentenceSilence = 0.05
+	}
+
+	cmd := exec.Command(piperExe, "--model", modelFile, "--output_file", tempWav,
+		"--length_scale", fmt.Sprintf("%.2f", lengthScale),
+		"--sentence_silence", fmt.Sprintf("%.2f", sentenceSilence))
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	_, _ = io.WriteString(stdin, text+"\n")
+	stdin.Close()
+
+	if err := cmd.Wait(); err != nil {
+		return err
+	}
+
+	return PlayWAVFile(tempWav)
+}
+
+// PlayWAVFile plays a WAV file synchronously using Windows System.Media.SoundPlayer.
+// This is used by both direct TTS and the Speech Intelligence Layer pipeline.
+func PlayWAVFile(wavPath string) error {
+	if runtime.GOOS == "windows" {
+		psPlay := fmt.Sprintf("(New-Object System.Media.SoundPlayer '%s').PlaySync()", strings.ReplaceAll(wavPath, "'", "''"))
+		playCmd := exec.Command("powershell", "-NoProfile", "-Command", psPlay)
+		return playCmd.Run()
+	}
+	return nil
+}
+
+// PlayJarvisSample plays a natural British female voice greeting sample.
+func PlayJarvisSample() error {
+	sampleText := "Hello, I am NEXA. How can I assist you with your tasks today?"
+	tts := NewTTS("piper", 0, true)
+	return tts.Speak(sampleText)
+}
+
 // speakWindows utilizes Windows System.Speech (SAPI5) fallback tuned for natural British female speech.
 func (t *TTS) speakWindows(text string) error {
 	escapedText := strings.ReplaceAll(text, "'", "''")
@@ -218,13 +374,6 @@ $synth.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo.Name + " (" + $_.Voi
 		}
 	}
 	return voices, nil
-}
-
-// PlayJarvisSample plays a natural British female voice greeting sample.
-func PlayJarvisSample() error {
-	sampleText := "Hello, I am NEXA. How can I assist you with your tasks today?"
-	tts := NewTTS("piper", 0, true)
-	return tts.Speak(sampleText)
 }
 
 var (

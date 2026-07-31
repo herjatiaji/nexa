@@ -64,3 +64,24 @@ func GetMascotExpression(state EmotionState, customMsg string) MascotState {
 		Timestamp: time.Now().Format("15:04:05"),
 	}
 }
+
+// FromSpeechEmotion converts a speech pipeline emotion tag string to a MascotState.
+// This keeps the mascot expression in sync with the detected speech emotion.
+func FromSpeechEmotion(speechEmotion string, customMsg string) MascotState {
+	switch speechEmotion {
+	case "happy":
+		return GetMascotExpression(EmotionHappy, customMsg)
+	case "excited":
+		return GetMascotExpression(EmotionHappy, customMsg)
+	case "sad":
+		return GetMascotExpression(EmotionConfused, customMsg)
+	case "thoughtful":
+		return GetMascotExpression(EmotionThinking, customMsg)
+	case "urgent":
+		return GetMascotExpression(EmotionExecuting, customMsg)
+	case "confident":
+		return GetMascotExpression(EmotionHappy, customMsg)
+	default:
+		return GetMascotExpression(EmotionSpeaking, customMsg)
+	}
+}

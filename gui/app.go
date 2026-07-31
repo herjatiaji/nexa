@@ -12,6 +12,7 @@ import (
 	"github.com/heraji/jarvis/memory"
 	"github.com/heraji/jarvis/security"
 	"github.com/heraji/jarvis/voice"
+	"github.com/heraji/jarvis/voice/speech"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -39,24 +40,27 @@ type StatusInfo struct {
 
 // App is the Wails application backend struct.
 type App struct {
-	agent        *core.Agent
-	cfg          *config.Config
-	memStore     *memory.MemoryStore
-	ctx          context.Context
-	mu           sync.Mutex
-	voiceActive  bool
-	voiceCleanup func()
-	ttsEngine    *voice.TTS
+	agent         *core.Agent
+	cfg           *config.Config
+	memStore      *memory.MemoryStore
+	ctx           context.Context
+	mu            sync.Mutex
+	voiceActive   bool
+	voiceCleanup  func()
+	ttsEngine     *voice.TTS
+	speechPlanner *speech.SpeechPlanner
 }
 
 // NewApp creates a new App instance with the NEXA agent, config, and memory store.
 func NewApp(agent *core.Agent, cfg *config.Config, memStore *memory.MemoryStore) *App {
 	tts := voice.NewTTS(cfg.TTSVoice, cfg.TTSRate, cfg.EnableTTS)
+	sp := speech.NewSpeechPlanner(speech.DefaultPersonality())
 	return &App{
-		agent:     agent,
-		cfg:       cfg,
-		memStore:  memStore,
-		ttsEngine: tts,
+		agent:         agent,
+		cfg:           cfg,
+		memStore:      memStore,
+		ttsEngine:     tts,
+		speechPlanner: sp,
 	}
 }
 
@@ -107,8 +111,9 @@ func (a *App) Chat(message string) ChatResult {
 
 	if err != nil {
 		respText = fmt.Sprintf("❌ Error: %v", err)
-	} else if a.cfg.EnableTTS && a.ttsEngine != nil {
-		a.ttsEngine.SpeakAsync(respText)
+	} else if a.cfg.EnableTTS && a.ttsEngine != nil && a.speechPlanner != nil {
+		// Use Speech Intelligence Layer for emotion-aware TTS
+		go a.speakWithIntelligence(respText)
 	}
 
 	return ChatResult{
@@ -116,6 +121,49 @@ func (a *App) Chat(message string) ChatResult {
 		ToolCalls: usedTools,
 		Memories:  a.memStore.List(),
 	}
+}
+
+// speakWithIntelligence runs the full Speech Intelligence pipeline:
+// Text → Segmentation → Emotion Analysis → Prosody Mapping → TTS Synthesis → Post-processing → Playback.
+// Emits nexa:speech:plan and nexa:emotion events for frontend visualization.
+func (a *App) speakWithIntelligence(text string) {
+	// Set up emotion detection callback to sync mascot state
+	a.speechPlanner.OnEmotionDetected = func(emotion speech.EmotionTag, confidence float64) {
+		mascotState := core.FromSpeechEmotion(string(emotion), fmt.Sprintf("Speaking (%s)", emotion))
+		runtime.EventsEmit(a.ctx, "nexa:emotion", mascotState)
+	}
+
+	// Plan the speech (analyze emotion, map prosody for each chunk)
+	plan := a.speechPlanner.Plan(text)
+
+	// Emit speech plan to frontend for visualization
+	runtime.EventsEmit(a.ctx, "nexa:speech:plan", map[string]interface{}{
+		"chunks":          plan.Chunks,
+		"dominantEmotion": plan.DominantEmotion,
+		"confidence":      plan.Confidence,
+		"personality":     plan.Personality.Name,
+	})
+
+	// Emit speaking emotion
+	runtime.EventsEmit(a.ctx, "nexa:emotion", core.GetMascotExpression(core.EmotionSpeaking, "Speaking..."))
+
+	// Execute synthesis with prosody-tuned TTS
+	wavPath, err := a.speechPlanner.Execute(plan, func(chunkText string, prosody speech.ProsodyParams) (string, error) {
+		return a.ttsEngine.SynthesizeToFile(chunkText, prosody)
+	})
+
+	if err != nil {
+		// Fallback to standard flat TTS if speech pipeline fails
+		_ = a.ttsEngine.Speak(text)
+		return
+	}
+
+	// Play the final processed audio
+	_ = voice.PlayWAVFile(wavPath)
+	_ = os.Remove(wavPath)
+
+	// Emit idle emotion after speech completes
+	runtime.EventsEmit(a.ctx, "nexa:emotion", core.GetMascotExpression(core.EmotionIdle, ""))
 }
 
 // StartVoiceEngine launches openWakeWord + Whisper STT listening background goroutine.
