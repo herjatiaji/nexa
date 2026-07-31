@@ -12,7 +12,7 @@ import (
 	"sync"
 )
 
-// TTS handles text-to-speech synthesis using Piper TTS with SAPI5 fallback.
+// TTS handles text-to-speech synthesis using Piper TTS (British Neural Voice) with SAPI5 fallback.
 type TTS struct {
 	VoiceName string // e.g. "piper" or model name
 	Rate      int    // -10 to 10
@@ -34,10 +34,10 @@ func NewTTS(voiceName string, rate int, enabled bool) *TTS {
 
 // Speak speaks the given text synchronously.
 func (t *TTS) Speak(text string) error {
-	return t.SpeakWithEmotion(EmotionPayload{Text: text, Emotion: "happy"})
+	return t.SpeakWithEmotion(EmotionPayload{Text: text, Emotion: "neutral"})
 }
 
-// SpeakWithEmotion speaks text with Phase 2 Emotion Metadata using VOICEVOX (Phase 1) or Piper fallback.
+// SpeakWithEmotion speaks text with natural British accent voice (ChatGPT-like conversational delivery).
 func (t *TTS) SpeakWithEmotion(payload EmotionPayload) error {
 	if !t.Enabled {
 		return nil
@@ -46,36 +46,17 @@ func (t *TTS) SpeakWithEmotion(payload EmotionPayload) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	// 1. Phase 1: Try VOICEVOX local REST engine (http://localhost:50021)
-	vvClient := NewVoicevoxClient("http://localhost:50021", 2) // 2: Shikoku Metan (Mature Adult Female)
-	if vvClient.IsAvailable() {
-		vvPayload := payload
-		vvPayload.Text = sanitizeTextForVoicevox(payload.Text)
-		if vvPayload.Text != "" {
-			if wavFile, err := vvClient.SynthesizeSpeech(vvPayload); err == nil {
-				defer os.Remove(wavFile)
-				if runtime.GOOS == "windows" {
-					psPlay := fmt.Sprintf("(New-Object System.Media.SoundPlayer '%s').PlaySync()", strings.ReplaceAll(wavFile, "'", "''"))
-					playCmd := exec.Command("powershell", "-NoProfile", "-Command", psPlay)
-					if err := playCmd.Run(); err == nil {
-						return nil
-					}
-				}
-			}
-		}
-	}
-
 	cleanText := sanitizeTextForSpeech(payload.Text)
 	if cleanText == "" {
 		return nil
 	}
 
-	// 2. Fallback to Piper Neural TTS (Amy cheerful voice)
+	// 1. Try Piper British Neural Voice (en_GB-alba-medium)
 	if err := t.speakPiper(cleanText); err == nil {
 		return nil
 	}
 
-	// 3. Fallback to Windows System.Speech (SAPI5)
+	// 2. Fallback to Windows System.Speech (SAPI5 British Female Voice)
 	if runtime.GOOS == "windows" {
 		return t.speakWindows(cleanText)
 	}
@@ -123,11 +104,11 @@ func findPiperLocation() (string, string) {
 
 	piperDir := filepath.Dir(piperExe)
 	modelFile := ""
-	
-	// Check specifically for cheerful Amy voice model first
-	amyPath := filepath.Join(piperDir, "en_US-amy-medium.onnx")
-	if _, err := os.Stat(amyPath); err == nil {
-		modelFile = amyPath
+
+	// Prioritize natural British female voice (en_GB-alba-medium.onnx)
+	albaPath := filepath.Join(piperDir, "en_GB-alba-medium.onnx")
+	if _, err := os.Stat(albaPath); err == nil {
+		modelFile = albaPath
 	} else {
 		_ = filepath.Walk(piperDir, func(path string, info os.FileInfo, err error) error {
 			if err == nil && !info.IsDir() && strings.HasSuffix(path, ".onnx") && !strings.Contains(path, "libtashkeel") {
@@ -141,7 +122,7 @@ func findPiperLocation() (string, string) {
 	return piperExe, modelFile
 }
 
-// speakPiper uses Rhasspy Piper ONNX neural TTS engine with clean cheerful pacing.
+// speakPiper uses Rhasspy Piper ONNX neural TTS engine with natural British conversational pacing.
 func (t *TTS) speakPiper(text string) error {
 	piperExe, modelFile := findPiperLocation()
 	if piperExe == "" || modelFile == "" {
@@ -151,8 +132,8 @@ func (t *TTS) speakPiper(text string) error {
 	tempWav := filepath.Join(os.TempDir(), fmt.Sprintf("nexa_tts_%d.wav", os.Getpid()))
 	defer os.Remove(tempWav)
 
-	// Run piper with length_scale 0.92 for natural, cheerful pace
-	cmd := exec.Command(piperExe, "--model", modelFile, "--output_file", tempWav, "--length_scale", "0.92")
+	// Run piper with natural conversational length_scale 1.0 and smooth sentence silence 0.2
+	cmd := exec.Command(piperExe, "--model", modelFile, "--output_file", tempWav, "--length_scale", "1.0", "--sentence_silence", "0.2")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
@@ -169,7 +150,7 @@ func (t *TTS) speakPiper(text string) error {
 		return err
 	}
 
-	// Play clean WAV audio file
+	// Play clean high-fidelity WAV audio file
 	if runtime.GOOS == "windows" {
 		psPlay := fmt.Sprintf("(New-Object System.Media.SoundPlayer '%s').PlaySync()", strings.ReplaceAll(tempWav, "'", "''"))
 		playCmd := exec.Command("powershell", "-NoProfile", "-Command", psPlay)
@@ -179,7 +160,7 @@ func (t *TTS) speakPiper(text string) error {
 	return nil
 }
 
-// speakWindows utilizes Windows System.Speech (SAPI5) fallback tuned for a cheerful female voice.
+// speakWindows utilizes Windows System.Speech (SAPI5) fallback tuned for natural British female speech.
 func (t *TTS) speakWindows(text string) error {
 	escapedText := strings.ReplaceAll(text, "'", "''")
 	escapedText = strings.ReplaceAll(escapedText, "\"", "`\"")
@@ -187,19 +168,22 @@ func (t *TTS) speakWindows(text string) error {
 	psScript := fmt.Sprintf(`
 Add-Type -AssemblyName System.Speech
 $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
-$synth.Rate = 1
+$synth.Rate = 0
 
 $voices = $synth.GetInstalledVoices()
-$cheerfulVoice = $voices | Where-Object { 
-    $_.VoiceInfo.Name -like '*Zira*' -or 
+$britishVoice = $voices | Where-Object { 
+    ($_.VoiceInfo.Culture.Name -eq 'en-GB' -and $_.VoiceInfo.Gender -eq 'Female') -or 
     $_.VoiceInfo.Name -like '*Hazel*' -or 
-    $_.VoiceInfo.Name -like '*Sonia*' -or
-    $_.VoiceInfo.Name -like '*Susan*' -or
-    ($_.VoiceInfo.Gender -eq 'Female')
+    $_.VoiceInfo.Name -like '*Sonia*' -or 
+    $_.VoiceInfo.Name -like '*Susan*'
 } | Select-Object -First 1
 
-if ($cheerfulVoice) {
-    $synth.SelectVoice($cheerfulVoice.VoiceInfo.Name)
+if (-not $britishVoice) {
+    $britishVoice = $voices | Where-Object { $_.VoiceInfo.Gender -eq 'Female' -or $_.VoiceInfo.Name -like '*Zira*' } | Select-Object -First 1
+}
+
+if ($britishVoice) {
+    $synth.SelectVoice($britishVoice.VoiceInfo.Name)
 }
 
 $synth.Speak('%s')
@@ -214,7 +198,7 @@ func ListVoices() ([]string, error) {
 	piperExe, modelFile := findPiperLocation()
 	var voices []string
 	if piperExe != "" && modelFile != "" {
-		voices = append(voices, fmt.Sprintf("Piper Neural TTS (%s)", filepath.Base(modelFile)))
+		voices = append(voices, fmt.Sprintf("Piper British Neural Voice (%s)", filepath.Base(modelFile)))
 	}
 
 	if runtime.GOOS == "windows" {
@@ -236,10 +220,10 @@ $synth.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo.Name + " (" + $_.Voi
 	return voices, nil
 }
 
-// PlayJarvisSample plays a cheerful female voice greeting sample using Piper TTS.
+// PlayJarvisSample plays a natural British female voice greeting sample.
 func PlayJarvisSample() error {
-	sampleText := "Hello boss! Nexa cheerful voice output is online and ready for your command."
-	tts := NewTTS("piper", 1, true)
+	sampleText := "Hello, I am NEXA. How can I assist you with your tasks today?"
+	tts := NewTTS("piper", 0, true)
 	return tts.Speak(sampleText)
 }
 
@@ -251,7 +235,7 @@ var (
 	cjkRegex        = regexp.MustCompile(`[\x{3000}-\x{303f}\x{3040}-\x{309f}\x{30a0}-\x{30ff}\x{ff00}-\x{ffef}\x{4e00}-\x{9faf}]`)
 )
 
-// sanitizeTextForSpeech removes markdown formatting, non-ASCII CJK, and code blocks for smooth TTS reading.
+// sanitizeTextForSpeech removes markdown formatting, symbols, and non-ASCII CJK for smooth natural reading.
 func sanitizeTextForSpeech(text string) string {
 	text = codeBlockRegex.ReplaceAllString(text, " [code block omitted] ")
 	text = inlineCodeRegex.ReplaceAllString(text, " ")
@@ -267,21 +251,4 @@ func sanitizeTextForSpeech(text string) string {
 		}
 	}
 	return strings.Join(cleanLines, ". ")
-}
-
-// sanitizeTextForVoicevox keeps Japanese hiragana/katakana/kanji while stripping markdown formatting.
-func sanitizeTextForVoicevox(text string) string {
-	text = codeBlockRegex.ReplaceAllString(text, " ")
-	text = inlineCodeRegex.ReplaceAllString(text, " ")
-	text = urlRegex.ReplaceAllString(text, " ")
-	text = symbolRegex.ReplaceAllString(text, " ")
-	lines := strings.Split(text, "\n")
-	var cleanLines []string
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed != "" {
-			cleanLines = append(cleanLines, trimmed)
-		}
-	}
-	return strings.Join(cleanLines, " ")
 }
