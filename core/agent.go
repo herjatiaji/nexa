@@ -35,6 +35,9 @@ type Agent struct {
 
 	// OnTrace is called when a new trace step is recorded.
 	OnTrace func(step TraceStep)
+
+	// OnEmotion is called when mascot emotion state changes.
+	OnEmotion func(mascot MascotState)
 }
 
 // NewAgent creates a new Agent with the given LLM and tool registry.
@@ -83,13 +86,20 @@ func (a *Agent) Run(userInput string) (string, error) {
 
 	// ReAct loop
 	for i := 0; i < a.maxIterations; i++ {
+		if a.OnEmotion != nil {
+			a.OnEmotion(GetMascotExpression(EmotionThinking, "Thinking..."))
+		}
+
 		// Send to LLM
 		resp, err := a.llm.Chat(a.history, toolDefs)
 		if err != nil {
+			if a.OnEmotion != nil {
+				a.OnEmotion(GetMascotExpression(EmotionConfused, "Error thinking"))
+			}
 			return "", fmt.Errorf("LLM error: %w", err)
 		}
 
-		// If no native tool calls, check for text-embedded tool calls (e.g. <desktop_apps>{...}</desktop_apps>)
+		// If no native tool calls, check for text-embedded tool calls
 		if len(resp.ToolCalls) == 0 {
 			if extractedCall, ok := parseTextToolCall(resp.Content); ok {
 				resp.ToolCalls = append(resp.ToolCalls, extractedCall)
@@ -99,7 +109,6 @@ func (a *Agent) Run(userInput string) (string, error) {
 					Content: resp.Content,
 				})
 
-				// Record final reasoning trace
 				step := TraceStep{
 					Thought:  resp.Content,
 					Response: resp.Content,
@@ -107,6 +116,9 @@ func (a *Agent) Run(userInput string) (string, error) {
 				a.tracer.AddStep(step)
 				if a.OnTrace != nil {
 					a.OnTrace(step)
+				}
+				if a.OnEmotion != nil {
+					a.OnEmotion(GetMascotExpression(EmotionHappy, "Done! 😎"))
 				}
 
 				return resp.Content, nil
@@ -122,6 +134,9 @@ func (a *Agent) Run(userInput string) (string, error) {
 
 		// Execute each tool call
 		for _, tc := range resp.ToolCalls {
+			if a.OnEmotion != nil {
+				a.OnEmotion(GetMascotExpression(EmotionExecuting, fmt.Sprintf("Using %s...", tc.Name)))
+			}
 			if a.OnToolCall != nil {
 				a.OnToolCall(tc.Name, tc.Arguments)
 			}
@@ -129,6 +144,13 @@ func (a *Agent) Run(userInput string) (string, error) {
 			result, err := a.tools.Execute(tc.Name, tc.Arguments)
 			if err != nil {
 				result = fmt.Sprintf("Error executing tool %s: %v", tc.Name, err)
+				if a.OnEmotion != nil {
+					a.OnEmotion(GetMascotExpression(EmotionConfused, fmt.Sprintf("%s error", tc.Name)))
+				}
+			} else {
+				if a.OnEmotion != nil {
+					a.OnEmotion(GetMascotExpression(EmotionHappy, fmt.Sprintf("%s completed!", tc.Name)))
+				}
 			}
 
 			if a.OnToolResult != nil {

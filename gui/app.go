@@ -75,6 +75,14 @@ func (a *App) Chat(message string) ChatResult {
 	var usedTools []ToolCallLog
 	prevOnToolCall := a.agent.OnToolCall
 	prevOnToolResult := a.agent.OnToolResult
+	prevOnEmotion := a.agent.OnEmotion
+
+	a.agent.OnEmotion = func(mascot core.MascotState) {
+		runtime.EventsEmit(a.ctx, "nexa:emotion", mascot)
+		if prevOnEmotion != nil {
+			prevOnEmotion(mascot)
+		}
+	}
 
 	a.agent.OnToolCall = func(toolName string, args string) {
 		usedTools = append(usedTools, ToolCallLog{Name: toolName, Args: args})
@@ -93,6 +101,7 @@ func (a *App) Chat(message string) ChatResult {
 
 	a.agent.OnToolCall = prevOnToolCall
 	a.agent.OnToolResult = prevOnToolResult
+	a.agent.OnEmotion = prevOnEmotion
 
 	runtime.EventsEmit(a.ctx, "nexa:status", "ready")
 

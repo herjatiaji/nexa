@@ -44,6 +44,14 @@ export interface StatusInfo {
   version: string;
 }
 
+export interface MascotState {
+  emotion: string;
+  message?: string;
+  eyeSymbol: string;
+  auraColor: string;
+  timestamp: string;
+}
+
 export interface TraceStep {
   index: number;
   thought: string;
