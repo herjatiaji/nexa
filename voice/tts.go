@@ -1,7 +1,6 @@
 package voice
 
 import (
-	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -13,7 +12,7 @@ import (
 	"sync"
 )
 
-// TTS handles text-to-speech synthesis using Piper TTS with cute anime companion pitch shift.
+// TTS handles text-to-speech synthesis using Piper TTS with SAPI5 fallback.
 type TTS struct {
 	VoiceName string // e.g. "piper" or model name
 	Rate      int    // -10 to 10
@@ -47,7 +46,7 @@ func (t *TTS) Speak(text string) error {
 		return nil
 	}
 
-	// 1. Try Piper TTS first if available (with cute anime pitch shift)
+	// 1. Try Piper TTS first if available
 	if err := t.speakPiper(cleanText); err == nil {
 		return nil
 	}
@@ -111,41 +110,18 @@ func findPiperLocation() (string, string) {
 	return piperExe, modelFile
 }
 
-// pitchShiftWAV shifts the sample rate of a WAV file to create a cute anime character voice pitch.
-func pitchShiftWAV(wavPath string, multiplier float64) error {
-	data, err := os.ReadFile(wavPath)
-	if err != nil || len(data) < 44 {
-		return err
-	}
-
-	if string(data[0:4]) != "RIFF" || string(data[8:12]) != "WAVE" {
-		return fmt.Errorf("invalid WAV file header")
-	}
-
-	origSampleRate := binary.LittleEndian.Uint32(data[24:28])
-	origByteRate := binary.LittleEndian.Uint32(data[28:32])
-
-	newSampleRate := uint32(float64(origSampleRate) * multiplier)
-	newByteRate := uint32(float64(origByteRate) * multiplier)
-
-	binary.LittleEndian.PutUint32(data[24:28], newSampleRate)
-	binary.LittleEndian.PutUint32(data[28:32], newByteRate)
-
-	return os.WriteFile(wavPath, data, 0644)
-}
-
-// speakPiper uses Rhasspy Piper ONNX neural TTS engine + cute anime character pitch modulation.
+// speakPiper uses Rhasspy Piper ONNX neural TTS engine with clean cheerful pacing.
 func (t *TTS) speakPiper(text string) error {
 	piperExe, modelFile := findPiperLocation()
 	if piperExe == "" || modelFile == "" {
 		return fmt.Errorf("piper engine or model not found")
 	}
 
-	tempWav := filepath.Join(os.TempDir(), fmt.Sprintf("nexa_cute_tts_%d.wav", os.Getpid()))
+	tempWav := filepath.Join(os.TempDir(), fmt.Sprintf("nexa_tts_%d.wav", os.Getpid()))
 	defer os.Remove(tempWav)
 
-	// Run piper with length_scale 0.82 for cute lively speech pacing
-	cmd := exec.Command(piperExe, "--model", modelFile, "--output_file", tempWav, "--length_scale", "0.82")
+	// Run piper with length_scale 0.92 for natural, cheerful pace
+	cmd := exec.Command(piperExe, "--model", modelFile, "--output_file", tempWav, "--length_scale", "0.92")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
@@ -162,10 +138,7 @@ func (t *TTS) speakPiper(text string) error {
 		return err
 	}
 
-	// Apply 1.34x pitch shift for cute anime companion character voice
-	_ = pitchShiftWAV(tempWav, 1.34)
-
-	// Play audio
+	// Play clean WAV audio file
 	if runtime.GOOS == "windows" {
 		psPlay := fmt.Sprintf("(New-Object System.Media.SoundPlayer '%s').PlaySync()", strings.ReplaceAll(tempWav, "'", "''"))
 		playCmd := exec.Command("powershell", "-NoProfile", "-Command", psPlay)
@@ -175,7 +148,7 @@ func (t *TTS) speakPiper(text string) error {
 	return nil
 }
 
-// speakWindows utilizes Windows System.Speech (SAPI5) fallback tuned for cute character pitch.
+// speakWindows utilizes Windows System.Speech (SAPI5) fallback tuned for a cheerful female voice.
 func (t *TTS) speakWindows(text string) error {
 	escapedText := strings.ReplaceAll(text, "'", "''")
 	escapedText = strings.ReplaceAll(escapedText, "\"", "`\"")
@@ -183,18 +156,19 @@ func (t *TTS) speakWindows(text string) error {
 	psScript := fmt.Sprintf(`
 Add-Type -AssemblyName System.Speech
 $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
-$synth.Rate = 2
+$synth.Rate = 1
 
 $voices = $synth.GetInstalledVoices()
-$cuteVoice = $voices | Where-Object { 
-    $_.VoiceInfo.Gender -eq 'Female' -or 
+$cheerfulVoice = $voices | Where-Object { 
     $_.VoiceInfo.Name -like '*Zira*' -or 
     $_.VoiceInfo.Name -like '*Hazel*' -or 
-    $_.VoiceInfo.Name -like '*Sonia*'
+    $_.VoiceInfo.Name -like '*Sonia*' -or
+    $_.VoiceInfo.Name -like '*Susan*' -or
+    ($_.VoiceInfo.Gender -eq 'Female')
 } | Select-Object -First 1
 
-if ($cuteVoice) {
-    $synth.SelectVoice($cuteVoice.VoiceInfo.Name)
+if ($cheerfulVoice) {
+    $synth.SelectVoice($cheerfulVoice.VoiceInfo.Name)
 }
 
 $synth.Speak('%s')
@@ -209,7 +183,7 @@ func ListVoices() ([]string, error) {
 	piperExe, modelFile := findPiperLocation()
 	var voices []string
 	if piperExe != "" && modelFile != "" {
-		voices = append(voices, fmt.Sprintf("Cute Anime Companion TTS (%s)", filepath.Base(modelFile)))
+		voices = append(voices, fmt.Sprintf("Piper Neural TTS (%s)", filepath.Base(modelFile)))
 	}
 
 	if runtime.GOOS == "windows" {
@@ -231,10 +205,10 @@ $synth.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo.Name + " (" + $_.Voi
 	return voices, nil
 }
 
-// PlayJarvisSample plays a cute anime companion voice greeting sample.
+// PlayJarvisSample plays a cheerful female voice greeting sample using Piper TTS.
 func PlayJarvisSample() error {
-	sampleText := "Hello boss! Nexa cute anime companion voice is online and ready!"
-	tts := NewTTS("piper", 2, true)
+	sampleText := "Hello boss! Nexa cheerful voice output is online and ready for your command."
+	tts := NewTTS("piper", 1, true)
 	return tts.Speak(sampleText)
 }
 
