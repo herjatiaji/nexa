@@ -3,9 +3,14 @@ package apps
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // AppsTool provides Windows Desktop application launching, control, listing, and window focus management.
@@ -22,7 +27,7 @@ func (a *AppsTool) Name() string {
 
 func (a *AppsTool) Description() string {
 	return "Control desktop applications on the user's computer. Supported actions: " +
-		"'launch' to open/start an application (e.g., code, chrome, notepad, spotify, docker, explorer, calc, msedge), " +
+		"'launch' to open/start an application (e.g., code, chrome, notepad, spotify, docker, explorer, calc, msedge, youtube). Pass search queries or URLs in 'arguments', " +
 		"'close' to terminate a running application process, " +
 		"'list' to list all currently running GUI desktop applications and processes, " +
 		"'focus' to bring a running application window to the foreground."
@@ -39,11 +44,11 @@ func (a *AppsTool) Parameters() map[string]interface{} {
 			},
 			"app_name": map[string]interface{}{
 				"type":        "string",
-				"description": "Application name, executable name, or path (e.g., code, chrome, notepad, spotify, calc, explorer)",
+				"description": "Application name, executable name, or path (e.g., code, chrome, notepad, spotify, calc, explorer, youtube)",
 			},
 			"arguments": map[string]interface{}{
 				"type":        "string",
-				"description": "Optional arguments/URL/file path to pass when launching the application (e.g., URL for browser or folder path for VS Code)",
+				"description": "Optional arguments/URL/search query/file path to pass when launching the application (e.g., URL or search keywords for browser/YouTube, song search for Spotify, or folder path for VS Code)",
 			},
 		},
 		"required": []interface{}{"action"},
@@ -87,6 +92,62 @@ func (a *AppsTool) launchApp(appName, args string) (string, error) {
 
 	cleanApp := strings.TrimSpace(strings.ToLower(appName))
 	cleanApp = strings.TrimSuffix(cleanApp, ".exe")
+
+	// Normalize search queries and URLs for web browsers, YouTube, and Spotify
+	args = strings.TrimSpace(args)
+	if cleanApp == "youtube" {
+		cleanApp = "chrome"
+		if !strings.HasPrefix(args, "http://") && !strings.HasPrefix(args, "https://") {
+			cleanQuery := strings.TrimPrefix(args, "/search")
+			cleanQuery = strings.TrimSpace(cleanQuery)
+			if cleanQuery == "" {
+				args = "https://www.youtube.com"
+			} else {
+				args = "https://www.youtube.com/results?search_query=" + url.QueryEscape(cleanQuery)
+			}
+		}
+	} else if cleanApp == "chrome" || cleanApp == "msedge" || cleanApp == "edge" || cleanApp == "firefox" || cleanApp == "browser" {
+		if strings.HasPrefix(args, "/search") || (args != "" && !strings.HasPrefix(args, "http://") && !strings.HasPrefix(args, "https://") && !strings.HasPrefix(args, "-")) {
+			cleanQuery := strings.TrimPrefix(args, "/search")
+			cleanQuery = strings.TrimSpace(cleanQuery)
+			lowerQuery := strings.ToLower(cleanQuery)
+			if strings.Contains(lowerQuery, "youtube") || strings.HasPrefix(lowerQuery, "yt ") {
+				cleanQuery = strings.ReplaceAll(cleanQuery, "youtube", "")
+				cleanQuery = strings.ReplaceAll(cleanQuery, "YouTube", "")
+				cleanQuery = strings.TrimPrefix(cleanQuery, "yt")
+				cleanQuery = strings.TrimSpace(cleanQuery)
+				args = "https://www.youtube.com/results?search_query=" + url.QueryEscape(cleanQuery)
+			} else if cleanQuery != "" {
+				args = "https://www.google.com/search?q=" + url.QueryEscape(cleanQuery)
+			}
+		}
+
+		// Try resolving YouTube search URLs into direct video URLs for instant autoplay
+		if strings.Contains(args, "youtube.com/results?search_query=") {
+			query := strings.TrimPrefix(args, "https://www.youtube.com/results?search_query=")
+			query, _ = url.QueryUnescape(query)
+			if directURL := fetchTopYouTubeVideoURL(query); directURL != "" {
+				args = directURL
+			}
+		}
+
+		// Ensure direct YouTube watch URLs autoplay automatically
+		if strings.Contains(args, "youtube.com/watch?v=") && !strings.Contains(args, "autoplay=1") {
+			if strings.Contains(args, "?") {
+				args += "&autoplay=1"
+			} else {
+				args += "?autoplay=1"
+			}
+		}
+	} else if cleanApp == "spotify" {
+		if strings.HasPrefix(args, "/search") || (args != "" && !strings.HasPrefix(args, "spotify:")) {
+			cleanQuery := strings.TrimPrefix(args, "/search")
+			cleanQuery = strings.TrimSpace(cleanQuery)
+			if cleanQuery != "" {
+				args = "spotify:search:" + url.QueryEscape(cleanQuery)
+			}
+		}
+	}
 
 	psScript := fmt.Sprintf(`
 $name = "%s"
@@ -132,6 +193,47 @@ $folderMap = @{
 if ($folderMap.ContainsKey($name)) {
 	try {
 		Start-Process "explorer.exe" -ArgumentList $folderMap[$name] -ErrorAction Stop
+		"OK"
+		exit 0
+	} catch {}
+}
+
+# Handle Spotify launch with robust multi-method autoplay trigger
+if ($name -eq "spotify" -or $args -like "spotify:*") {
+	try {
+		$target = "spotify:"
+		if ($args -ne "") {
+			if ($args -like "spotify:*") {
+				$target = $args
+			} else {
+				$target = "spotify:search:" + [System.Uri]::EscapeDataString($args)
+			}
+		}
+		Start-Process $target -ErrorAction Stop
+		Start-Sleep -Milliseconds 1800
+
+		# Focus Spotify window
+		$wshell = New-Object -ComObject wscript.shell
+		$wshell.AppActivate("Spotify")
+		Start-Sleep -Milliseconds 200
+
+		# Send Enter to play top track
+		$wshell.SendKeys('{ENTER}')
+		Start-Sleep -Milliseconds 300
+		$wshell.SendKeys(' ')
+
+		# Backup Media Play key event
+		$code = @"
+using System;
+using System.Runtime.InteropServices;
+public class SpotifyMediaKey {
+    [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, uint dwExtraInfo);
+}
+"@
+		Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue
+		[SpotifyMediaKey]::keybd_event(0xB3, 0, 0, 0)
+		[SpotifyMediaKey]::keybd_event(0xB3, 0, 2, 0)
+
 		"OK"
 		exit 0
 	} catch {}
@@ -324,4 +426,37 @@ func normalizeAppName(name string) string {
 	default:
 		return name
 	}
+}
+
+func fetchTopYouTubeVideoURL(query string) string {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return ""
+	}
+
+	searchURL := "https://html.duckduckgo.com/html/?q=" + url.QueryEscape(query+" youtube video")
+	req, err := http.NewRequest("GET", searchURL, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 200000))
+	if err != nil {
+		return ""
+	}
+
+	re := regexp.MustCompile(`youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})`)
+	matches := re.FindStringSubmatch(string(bodyBytes))
+	if len(matches) >= 2 {
+		return "https://www.youtube.com/watch?v=" + matches[1]
+	}
+	return ""
 }

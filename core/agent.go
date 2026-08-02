@@ -203,16 +203,16 @@ func (a *Agent) Reset() {
 
 var textToolCallRegexes = []*regexp.Regexp{
 	// 1. XML opening tag attribute format (flexible closing tag/bracket): <filesystem {"action": "list_dir", "path": "..."}}
-	regexp.MustCompile(`<([a-zA-Z0-9_]+)\s+(\{[\s\S]*?\})(?:</[a-zA-Z0-9_]+>|/>|>|\s|$)`),
+	regexp.MustCompile(`<([a-zA-Z0-9_]+)\s+(\{[\s\S]*?\})[;,\s]*(?:</[a-zA-Z0-9_]+>|/>|>|\s|$)`),
 
 	// 2. XML tag wrapper format: <desktop_apps>{"action": "launch"}</desktop_apps>
-	regexp.MustCompile(`<([a-zA-Z0-9_]+)>\s*(\{[\s\S]*?\})\s*</[a-zA-Z0-9_]+>`),
+	regexp.MustCompile(`<([a-zA-Z0-9_]+)>\s*(\{[\s\S]*?\})[;,\s]*(?:</[a-zA-Z0-9_]+>|/>)?`),
 
 	// 3. Markdown code block or JSON tool_call: ```json {"tool": "desktop_apps", "arguments": {...}} ``` or {"name": "...", "parameters": {...}}
-	regexp.MustCompile("(?:```(?:json)?\\s*)?\\{\\s*\"(?:tool|name)\"\\s*:\\s*\"([a-zA-Z0-9_]+)\"\\s*,\\s*\"(?:arguments|parameters|args)\"\\s*:\\s*(\\{[\\s\\S]*?\\})\\s*\\}"),
+	regexp.MustCompile("(?:```(?:json)?\\s*)?\\{\\s*\"(?:tool|name)\"\\s*:\\s*\"([a-zA-Z0-9_]+)\"\\s*,\\s*\"(?:arguments|parameters|args)\"\\s*:\\s*(\\{[\\s\\S]*?\\})[;,\\s]*\\}"),
 
 	// 4. Function tag format: <function=desktop_apps>{"action": "launch"}</function>
-	regexp.MustCompile(`<function=([a-zA-Z0-9_]+)>\s*(\{[\s\S]*?\})(?:</function>)?`),
+	regexp.MustCompile(`<function=([a-zA-Z0-9_]+)>\s*(\{[\s\S]*?\})[;,\s]*(?:</function>)?`),
 
 	// 5. Function call syntax: desktop_apps({"action": "launch"})
 	regexp.MustCompile(`([a-zA-Z0-9_]+)\s*\(\s*(\{[\s\S]*?\})\s*\)`),
@@ -229,9 +229,8 @@ func parseTextToolCalls(content string) []types.ToolCall {
 				toolName := strings.TrimSpace(m[1])
 				rawArgs := strings.TrimSpace(m[2])
 
-				// Clean up trailing markdown backticks
-				rawArgs = strings.TrimSuffix(rawArgs, "```")
-				rawArgs = strings.TrimSpace(rawArgs)
+				// Clean up trailing markdown backticks, semicolons, commas, whitespace
+				rawArgs = strings.TrimRight(rawArgs, "`;, \t\r\n")
 
 				// Iteratively fix extra trailing braces (e.g. }} produced by some LLMs)
 				currArgs := rawArgs
@@ -239,6 +238,7 @@ func parseTextToolCalls(content string) []types.ToolCall {
 				var validJSON map[string]interface{}
 
 				for len(currArgs) > 0 {
+					currArgs = strings.TrimRight(currArgs, "`;, \t\r\n")
 					var js map[string]interface{}
 					if json.Unmarshal([]byte(currArgs), &js) == nil {
 						validArgs = currArgs
@@ -276,6 +276,123 @@ func parseTextToolCalls(content string) []types.ToolCall {
 		if !seen[key] {
 			seen[key] = true
 			toolCalls = append(toolCalls, xc)
+		}
+	}
+
+	// Also parse positional function-style calls: desktop_apps('launch', 'app_name', 'spotify')
+	posCalls := parsePositionalFunctionToolCalls(content)
+	for _, pc := range posCalls {
+		key := pc.Name + ":" + pc.Arguments
+		if !seen[key] {
+			seen[key] = true
+			toolCalls = append(toolCalls, pc)
+		}
+	}
+
+	return toolCalls
+}
+
+var positionalFuncRegex = regexp.MustCompile(`([a-zA-Z0-9_]+)\s*\(\s*(['"][^'"]*['"](?:\s*,\s*['"][^'"]*['"])*)\s*\)`)
+var stringTokenRegex = regexp.MustCompile(`['"]([^'"]*)['"]`)
+
+func parsePositionalFunctionToolCalls(content string) []types.ToolCall {
+	var toolCalls []types.ToolCall
+
+	matches := positionalFuncRegex.FindAllStringSubmatch(content, -1)
+	for _, m := range matches {
+		if len(m) >= 3 {
+			toolName := strings.TrimSpace(m[1])
+			argsStr := m[2]
+
+			tokenMatches := stringTokenRegex.FindAllStringSubmatch(argsStr, -1)
+			var tokens []string
+			for _, tm := range tokenMatches {
+				if len(tm) >= 2 {
+					tokens = append(tokens, tm[1])
+				}
+			}
+
+			if len(tokens) == 0 {
+				continue
+			}
+
+			argsMap := make(map[string]interface{})
+
+			var cleanTokens []string
+			for _, tok := range tokens {
+				if tok == toolName || tok == "app_name" || tok == "path" || tok == "action" || tok == "arguments" || tok == "query" || tok == "url" {
+					continue
+				}
+				cleanTokens = append(cleanTokens, tok)
+			}
+
+			action := ""
+			knownActions := map[string]bool{
+				"launch": true, "close": true, "list": true, "focus": true, "focus_window": true,
+				"read_file": true, "write_file": true, "append_file": true, "list_dir": true,
+				"search": true, "create_dir": true, "delete": true, "copy": true, "move": true,
+				"get_info": true, "find_files": true, "fetch": true, "weather": true,
+			}
+
+			for _, tok := range tokens {
+				if tok == "focus_window" {
+					action = "focus"
+					break
+				}
+				if knownActions[tok] {
+					action = tok
+					break
+				}
+			}
+
+			if action == "" {
+				if toolName == "desktop_apps" {
+					action = "launch"
+				} else if toolName == "filesystem" {
+					action = "list_dir"
+				} else if toolName == "web" {
+					action = "search"
+				}
+			}
+			argsMap["action"] = action
+
+			for _, tok := range cleanTokens {
+				if knownActions[tok] {
+					continue
+				}
+				if strings.HasPrefix(tok, "http://") || strings.HasPrefix(tok, "https://") || strings.HasPrefix(tok, "spotify:") || strings.HasPrefix(tok, "/search") {
+					if toolName == "web" {
+						argsMap["url"] = tok
+					} else {
+						argsMap["arguments"] = tok
+					}
+				} else if toolName == "desktop_apps" {
+					if _, hasApp := argsMap["app_name"]; !hasApp {
+						argsMap["app_name"] = tok
+					} else {
+						argsMap["arguments"] = tok
+					}
+				} else if toolName == "filesystem" {
+					argsMap["path"] = tok
+				} else if toolName == "web" {
+					argsMap["query"] = tok
+				} else {
+					if _, hasPath := argsMap["path"]; !hasPath {
+						argsMap["path"] = tok
+					} else {
+						argsMap["query"] = tok
+					}
+				}
+			}
+
+			jsonBytes, err := json.Marshal(argsMap)
+			if err == nil {
+				toolCalls = append(toolCalls, types.ToolCall{
+					ID:        fmt.Sprintf("call_pos_%d_%d", time.Now().UnixNano(), len(toolCalls)),
+					Name:      toolName,
+					Arguments: string(jsonBytes),
+				})
+			}
 		}
 	}
 

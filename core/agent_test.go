@@ -66,6 +66,24 @@ func TestParseTextToolCalls(t *testing.T) {
 			expectedArgs: `{"action":"launch","app_name":"explorer","arguments":"E:\\Project Freelance\\be-gorillacoach"}`,
 		},
 		{
+			name:         "Trailing Semicolon Inside Tag Body (User Case)",
+			input:        `<desktop_apps>{"action":"launch","app_name":"chrome","arguments":"https://www.youtube.com/results?search_query=Oasis+Definitely+Maybe"};</desktop_apps>`,
+			expectedName: "desktop_apps",
+			expectedArgs: `{"action":"launch","app_name":"chrome","arguments":"https://www.youtube.com/results?search_query=Oasis+Definitely+Maybe"}`,
+		},
+		{
+			name:         "Positional String Function Call (User Case 1)",
+			input:        `desktop_apps('launch', 'app_name', 'spotify')`,
+			expectedName: "desktop_apps",
+			expectedArgs: `{"action":"launch","app_name":"spotify"}`,
+		},
+		{
+			name:         "Positional String Function Call with URI (User Case 2)",
+			input:        `desktop_apps('desktop_apps', 'app_name', 'spotify', 'spotify:search:Wonderwall')`,
+			expectedName: "desktop_apps",
+			expectedArgs: `{"action":"launch","app_name":"spotify","arguments":"spotify:search:Wonderwall"}`,
+		},
+		{
 			name:         "JSON Block Format",
 			input:        `{"tool": "web_search", "arguments": {"query": "golang"}}`,
 			expectedName: "web_search",
