@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/heraji/jarvis/types"
@@ -88,22 +89,46 @@ func (g *Groq) Chat(messages []types.Message, tools []types.ToolDefinition) (*ty
 		}
 	}
 
-	// Send request
-	resp, err := g.client.CreateChatCompletion(ctx, req)
-	if err != nil {
+	// Send request with automatic 429 rate limit retry loop
+	var resp openai.ChatCompletionResponse
+	var err error
+	maxRetries := 3
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		resp, err = g.client.CreateChatCompletion(ctx, req)
+		if err == nil {
+			break
+		}
+
+		errStr := err.Error()
+
+		// If hit Rate Limit 429, wait and retry automatically
+		if strings.Contains(errStr, "429") || strings.Contains(errStr, "Too Many Requests") || strings.Contains(errStr, "Rate limit") {
+			if attempt < maxRetries {
+				time.Sleep(time.Duration(3+attempt*2) * time.Second)
+				continue
+			}
+		}
+
 		// Fallback 1: Retry with high-capacity model (llama-3.1-8b-instant)
 		if req.Model != "llama-3.1-8b-instant" {
 			req.Model = "llama-3.1-8b-instant"
 			resp, err = g.client.CreateChatCompletion(ctx, req)
+			if err == nil {
+				break
+			}
 		}
+
 		// Fallback 2: If 400 Bad Request occurs (Groq function call formatting error), retry without tool definitions
-		if err != nil && len(req.Tools) > 0 {
+		if len(req.Tools) > 0 {
 			req.Tools = nil
 			resp, err = g.client.CreateChatCompletion(ctx, req)
+			if err == nil {
+				break
+			}
 		}
-		if err != nil {
-			return nil, fmt.Errorf("groq API error: %w", err)
-		}
+
+		return nil, fmt.Errorf("groq API error: %w", err)
 	}
 
 	if len(resp.Choices) == 0 {

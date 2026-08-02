@@ -51,6 +51,7 @@ type App struct {
 	memStore        *memory.MemoryStore
 	ctx             context.Context
 	mu              sync.Mutex
+	speechMu        sync.Mutex
 	voiceActive     bool
 	voiceCleanup    func()
 	ttsEngine       *voice.TTS
@@ -161,6 +162,8 @@ func (a *App) Chat(message string) ChatResult {
 // Text → Segmentation → Emotion Analysis → Prosody Mapping → TTS Synthesis → Post-processing → Playback.
 // Emits nexa:speech:plan and nexa:emotion events for frontend visualization.
 func (a *App) speakWithIntelligence(text string) {
+	a.speechMu.Lock()
+	defer a.speechMu.Unlock()
 	// Set up emotion detection callback to sync mascot state
 	a.speechPlanner.OnEmotionDetected = func(emotion speech.EmotionTag, confidence float64) {
 		mascotState := core.FromSpeechEmotion(string(emotion), fmt.Sprintf("Speaking (%s)", emotion))

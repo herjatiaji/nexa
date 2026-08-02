@@ -84,6 +84,9 @@ func (a *Agent) Run(userInput string) (string, error) {
 	// Get tool definitions for the LLM
 	toolDefs := a.tools.ListDefinitions()
 
+	// Track executed tool calls in this turn to prevent infinite loops
+	executedToolCounts := make(map[string]int)
+
 	// ReAct loop
 	for i := 0; i < a.maxIterations; i++ {
 		if a.OnEmotion != nil {
@@ -101,8 +104,8 @@ func (a *Agent) Run(userInput string) (string, error) {
 
 		// If no native tool calls, check for text-embedded tool calls
 		if len(resp.ToolCalls) == 0 {
-			if extractedCall, ok := parseTextToolCall(resp.Content); ok {
-				resp.ToolCalls = append(resp.ToolCalls, extractedCall)
+			if extractedCalls := parseTextToolCalls(resp.Content); len(extractedCalls) > 0 {
+				resp.ToolCalls = append(resp.ToolCalls, extractedCalls...)
 			} else {
 				a.history = append(a.history, types.Message{
 					Role:    "assistant",
@@ -134,27 +137,37 @@ func (a *Agent) Run(userInput string) (string, error) {
 
 		// Execute each tool call
 		for _, tc := range resp.ToolCalls {
-			if a.OnEmotion != nil {
-				a.OnEmotion(GetMascotExpression(EmotionExecuting, fmt.Sprintf("Using %s...", tc.Name)))
-			}
-			if a.OnToolCall != nil {
-				a.OnToolCall(tc.Name, tc.Arguments)
-			}
+			toolKey := tc.Name + ":" + tc.Arguments
+			executedToolCounts[toolKey]++
 
-			result, err := a.tools.Execute(tc.Name, tc.Arguments)
-			if err != nil {
-				result = fmt.Sprintf("Error executing tool %s: %v", tc.Name, err)
-				if a.OnEmotion != nil {
-					a.OnEmotion(GetMascotExpression(EmotionConfused, fmt.Sprintf("%s error", tc.Name)))
-				}
+			var result string
+			if executedToolCounts[toolKey] > 2 {
+				// Prevent infinite tool execution loop by forcing the LLM to summarize
+				result = fmt.Sprintf("System Notice: Tool '%s' with arguments '%s' was already executed %d times. Do NOT call this tool again. Please answer the user directly with the information already gathered.", tc.Name, tc.Arguments, executedToolCounts[toolKey]-1)
 			} else {
 				if a.OnEmotion != nil {
-					a.OnEmotion(GetMascotExpression(EmotionHappy, fmt.Sprintf("%s completed!", tc.Name)))
+					a.OnEmotion(GetMascotExpression(EmotionExecuting, fmt.Sprintf("Using %s...", tc.Name)))
 				}
-			}
+				if a.OnToolCall != nil {
+					a.OnToolCall(tc.Name, tc.Arguments)
+				}
 
-			if a.OnToolResult != nil {
-				a.OnToolResult(tc.Name, result)
+				res, err := a.tools.Execute(tc.Name, tc.Arguments)
+				if err != nil {
+					result = fmt.Sprintf("Error executing tool %s: %v", tc.Name, err)
+					if a.OnEmotion != nil {
+						a.OnEmotion(GetMascotExpression(EmotionConfused, fmt.Sprintf("%s error", tc.Name)))
+					}
+				} else {
+					result = res
+					if a.OnEmotion != nil {
+						a.OnEmotion(GetMascotExpression(EmotionHappy, fmt.Sprintf("%s completed!", tc.Name)))
+					}
+				}
+
+				if a.OnToolResult != nil {
+					a.OnToolResult(tc.Name, result)
+				}
 			}
 
 			// Record tool trace step
@@ -189,44 +202,138 @@ func (a *Agent) Reset() {
 }
 
 var textToolCallRegexes = []*regexp.Regexp{
-	// 1. Markdown code block or JSON tool_call: ```json {"tool": "desktop_apps", "arguments": {...}} ```
-	regexp.MustCompile("(?:```(?:json)?\\s*)?\\{\\s*\"tool\"\\s*:\\s*\"([a-zA-Z0-9_]+)\"\\s*,\\s*\"arguments\"\\s*:\\s*(\\{[\\s\\S]*?\\})\\s*\\}"),
+	// 1. XML opening tag attribute format (flexible closing tag/bracket): <filesystem {"action": "list_dir", "path": "..."}}
+	regexp.MustCompile(`<([a-zA-Z0-9_]+)\s+(\{[\s\S]*?\})(?:</[a-zA-Z0-9_]+>|/>|>|\s|$)`),
 
-	// 2. XML tag format: <desktop_apps>{"action": "launch"}</desktop_apps>
+	// 2. XML tag wrapper format: <desktop_apps>{"action": "launch"}</desktop_apps>
 	regexp.MustCompile(`<([a-zA-Z0-9_]+)>\s*(\{[\s\S]*?\})\s*</[a-zA-Z0-9_]+>`),
 
-	// 3. Function tag format: <function=desktop_apps>{"action": "launch"}</function>
+	// 3. Markdown code block or JSON tool_call: ```json {"tool": "desktop_apps", "arguments": {...}} ``` or {"name": "...", "parameters": {...}}
+	regexp.MustCompile("(?:```(?:json)?\\s*)?\\{\\s*\"(?:tool|name)\"\\s*:\\s*\"([a-zA-Z0-9_]+)\"\\s*,\\s*\"(?:arguments|parameters|args)\"\\s*:\\s*(\\{[\\s\\S]*?\\})\\s*\\}"),
+
+	// 4. Function tag format: <function=desktop_apps>{"action": "launch"}</function>
 	regexp.MustCompile(`<function=([a-zA-Z0-9_]+)>\s*(\{[\s\S]*?\})(?:</function>)?`),
 
-	// 4. Function call syntax: desktop_apps({"action": "launch"})
+	// 5. Function call syntax: desktop_apps({"action": "launch"})
 	regexp.MustCompile(`([a-zA-Z0-9_]+)\s*\(\s*(\{[\s\S]*?\})\s*\)`),
 }
 
-func parseTextToolCall(content string) (types.ToolCall, bool) {
+func parseTextToolCalls(content string) []types.ToolCall {
+	var toolCalls []types.ToolCall
+	seen := make(map[string]bool)
+
 	for _, re := range textToolCallRegexes {
-		matches := re.FindStringSubmatch(content)
-		if len(matches) >= 3 {
-			toolName := strings.TrimSpace(matches[1])
-			toolArgs := strings.TrimSpace(matches[2])
+		matches := re.FindAllStringSubmatch(content, -1)
+		for _, m := range matches {
+			if len(m) >= 3 {
+				toolName := strings.TrimSpace(m[1])
+				rawArgs := strings.TrimSpace(m[2])
 
-			// Clean up trailing brackets or markdown backticks if matched
-			toolArgs = strings.TrimSuffix(toolArgs, "```")
-			toolArgs = strings.TrimSpace(toolArgs)
+				// Clean up trailing markdown backticks
+				rawArgs = strings.TrimSuffix(rawArgs, "```")
+				rawArgs = strings.TrimSpace(rawArgs)
 
-			if strings.HasSuffix(toolArgs, "}}") && !strings.HasSuffix(toolArgs, "}}}") {
-				toolArgs = strings.TrimSuffix(toolArgs, "}")
-			}
+				// Iteratively fix extra trailing braces (e.g. }} produced by some LLMs)
+				currArgs := rawArgs
+				var validArgs string
+				var validJSON map[string]interface{}
 
-			// Validate JSON
-			var js map[string]interface{}
-			if json.Unmarshal([]byte(toolArgs), &js) == nil {
-				return types.ToolCall{
-					ID:        fmt.Sprintf("call_text_%d", time.Now().UnixNano()),
-					Name:      toolName,
-					Arguments: toolArgs,
-				}, true
+				for len(currArgs) > 0 {
+					var js map[string]interface{}
+					if json.Unmarshal([]byte(currArgs), &js) == nil {
+						validArgs = currArgs
+						validJSON = js
+						break
+					}
+					// If json unmarshal failed and it ends with '}', try trimming one trailing '}'
+					if strings.HasSuffix(currArgs, "}") {
+						currArgs = strings.TrimSuffix(currArgs, "}")
+						currArgs = strings.TrimSpace(currArgs)
+					} else {
+						break
+					}
+				}
+
+				if validArgs != "" && validJSON != nil {
+					key := toolName + ":" + validArgs
+					if !seen[key] {
+						seen[key] = true
+						toolCalls = append(toolCalls, types.ToolCall{
+							ID:        fmt.Sprintf("call_text_%d_%d", time.Now().UnixNano(), len(toolCalls)),
+							Name:      toolName,
+							Arguments: validArgs,
+						})
+					}
+				}
 			}
 		}
 	}
-	return types.ToolCall{}, false
+
+	// Also parse XML attribute syntax: <filesystem action="list_dir" path="..."></filesystem>
+	xmlCalls := parseXMLAttributeToolCalls(content)
+	for _, xc := range xmlCalls {
+		key := xc.Name + ":" + xc.Arguments
+		if !seen[key] {
+			seen[key] = true
+			toolCalls = append(toolCalls, xc)
+		}
+	}
+
+	return toolCalls
+}
+
+var xmlTagRegex = regexp.MustCompile(`<([a-zA-Z0-9_]+)\s+([^>]+)>(?:</[a-zA-Z0-9_]+>|/>)?`)
+var xmlAttrRegex = regexp.MustCompile(`([a-zA-Z0-9_]+)=(?:"([^"]*)"|'([^']*)')`)
+
+func parseXMLAttributeToolCalls(content string) []types.ToolCall {
+	var toolCalls []types.ToolCall
+
+	// Normalize double closing brackets like ">>" -> ">"
+	cleanedContent := strings.ReplaceAll(content, ">>", ">")
+
+	matches := xmlTagRegex.FindAllStringSubmatch(cleanedContent, -1)
+	for _, m := range matches {
+		if len(m) >= 3 {
+			toolName := strings.TrimSpace(m[1])
+			attrStr := strings.TrimSpace(m[2])
+
+			// Skip if attrStr starts with '{' (handled by JSON parser)
+			if strings.HasPrefix(attrStr, "{") {
+				continue
+			}
+
+			attrMatches := xmlAttrRegex.FindAllStringSubmatch(attrStr, -1)
+			if len(attrMatches) == 0 {
+				continue
+			}
+
+			argsMap := make(map[string]interface{})
+			for _, am := range attrMatches {
+				if len(am) >= 2 {
+					k := am[1]
+					v := ""
+					if len(am) >= 3 {
+						v = am[2]
+					}
+					if v == "" && len(am) >= 4 {
+						v = am[3]
+					}
+					argsMap[k] = v
+				}
+			}
+
+			if len(argsMap) > 0 {
+				jsonBytes, err := json.Marshal(argsMap)
+				if err == nil {
+					toolCalls = append(toolCalls, types.ToolCall{
+						ID:        fmt.Sprintf("call_xml_%d_%d", time.Now().UnixNano(), len(toolCalls)),
+						Name:      toolName,
+						Arguments: string(jsonBytes),
+					})
+				}
+			}
+		}
+	}
+
+	return toolCalls
 }
